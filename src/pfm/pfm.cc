@@ -39,23 +39,29 @@ namespace PeterDB {
     FileHandle::~FileHandle() = default;
 
     RC FileHandle::readPage(PageNum pageNum, void *data) {
-        return -1;
+        readPageCounter++;
+        return 0;
     }
 
     RC FileHandle::writePage(PageNum pageNum, const void *data) {
-        return -1;
+        writePageCounter++;
+        return 0;
     }
 
     RC FileHandle::appendPage(const void *data) {
-        return -1;
+        appendPageCounter++;
+        return 0;
     }
 
     unsigned FileHandle::getNumberOfPages() {
-        return -1;
+        return appendPageCounter;
     }
 
     RC FileHandle::collectCounterValues(unsigned &readPageCount, unsigned &writePageCount, unsigned &appendPageCount) {
-        return -1;
+        readPageCount = readPageCounter;
+        writePageCount = writePageCounter;
+        appendPageCount = appendPageCounter;
+        return 0;
     }
 
 } // namespace PeterDB
