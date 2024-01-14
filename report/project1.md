@@ -2,10 +2,10 @@
 
 
 ### 1. Basic information
- - Team #:
- - Github Repo Link:
- - Student 1 UCI NetID:
- - Student 1 Name:
+ - Team #: 7
+ - Github Repo Link: https://github.com/zhijiz8/cs222-winter24-zhijiz8
+ - Student 1 UCI NetID: jiahel6
+ - Student 1 Name: Tony Liu
  - Student 2 UCI NetID (if applicable):
  - Student 2 Name (if applicable):
 
