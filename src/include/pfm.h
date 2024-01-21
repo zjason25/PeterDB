@@ -26,7 +26,6 @@ namespace PeterDB {
         ~PagedFileManager();                                                // Prevent unwanted destruction
         PagedFileManager(const PagedFileManager &);                         // Prevent construction by copying
         PagedFileManager &operator=(const PagedFileManager &);              // Prevent assignment
-
     };
 
     class FileHandle {
@@ -35,6 +34,7 @@ namespace PeterDB {
         unsigned readPageCounter;
         unsigned writePageCounter;
         unsigned appendPageCounter;
+        FILE * openedFile;
 
         FileHandle();                                                       // Default constructor
         ~FileHandle();                                                      // Destructor
@@ -45,6 +45,18 @@ namespace PeterDB {
         unsigned getNumberOfPages();                                        // Get the number of pages in the file
         RC collectCounterValues(unsigned &readPageCount, unsigned &writePageCount,
                                 unsigned &appendPageCount);                 // Put current counter values into variables
+
+        void createHiddenPage();
+        void updateOpenedFile(FILE * pageFile);
+
+    private:
+        unsigned getReadPageCnt();
+        unsigned getWritePageCnt();
+        unsigned getAppendPageCnt();
+        RC writeNumberOfPages(unsigned numOfPages);
+        RC writeReadPageCnt(unsigned readPageCnt);
+        RC writeWritePageCnt(unsigned writePageCnt);
+        RC writeAppendPageCnt(unsigned appendPageCnt);
     };
 
 } // namespace PeterDB
