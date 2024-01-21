@@ -3,8 +3,7 @@
 #### This is the project codebase for Principles of Data Management, PeterDB
 
 ### GitHub Usernames:
-- Tony Liu (UCI NetID: jiahel6): tonyliu02
-- Jason Zheng: 
+- Jason Zheng: (UCI NetID zhijiz8) : zhijiz8
 
 ### Components:
  - PagedFileManager

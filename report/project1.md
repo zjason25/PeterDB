@@ -4,10 +4,8 @@
 ### 1. Basic information
  - Team #: 7
  - Github Repo Link: https://github.com/zhijiz8/cs222-winter24-zhijiz8
- - Student 1 UCI NetID: jiahel6
- - Student 1 Name: Tony Liu
- - Student 2 UCI NetID (if applicable):
- - Student 2 Name (if applicable):
+ - Student 1 UCI NetID: zhijiz8
+ - Student 1 Name: Jason Zheng
 
 
 ### 2. Internal Record Format
