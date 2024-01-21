@@ -31,6 +31,7 @@ namespace PeterDB {
             fclose(pageFile);
             return 0;
         }
+        // file already exists
         return -1;
     }
 
@@ -39,7 +40,7 @@ namespace PeterDB {
         if (access(fileName_c, F_OK) == 0) {
             if (remove(fileName_c) == 0) {return 0;}
         }
-        // fileHandle does not exist
+        // file does not exist
         return -1;
     }
 
@@ -60,7 +61,7 @@ namespace PeterDB {
             fileHandle.openedFile = nullptr;
             return 0;
         }
-        // fileHandle does not exist
+        // the file is not opened
         return -1;
 
     }
@@ -77,49 +78,45 @@ namespace PeterDB {
     RC FileHandle::readPage(PageNum pageNum, void *data) {
         PageNum totalPages = getNumberOfPages();
         if (pageNum <= totalPages) {
-            fseek(openedFile, pageNum * PAGE_SIZE + PAGE_SIZE, SEEK_SET); //skip the hidden page
+            PageNum page = pageNum * PAGE_SIZE + PAGE_SIZE; // + PAGE_SIZE to skip first page
+            fseek(openedFile, (long)(page * sizeof(char)), SEEK_SET);
             fread(data, sizeof(char), PAGE_SIZE, openedFile);
             //update readPageCounter
-            readPageCounter = getReadPageCnt();
-            readPageCounter += 1;
-            writeReadPageCnt(readPageCounter);
+            readPageCounter = getReadPageCnt() + 1;
+            setReadPageCnt(readPageCounter);
             return 0;
         }
-        perror("Page does not exist!");
+        // page does not exist
         return -1;
     }
 
     RC FileHandle::writePage(PageNum pageNum, const void *data) {
         PageNum totalPages = getNumberOfPages();
-        if (totalPages == 0 && pageNum == 0) {
-            appendPage(data);
-        }
+        if (totalPages == 0 && pageNum == 0) {appendPage(data);}
         else if (pageNum <= totalPages) {
-            fseek(openedFile, sizeof(char) * PAGE_SIZE * pageNum + PAGE_SIZE, SEEK_SET);
+            PageNum page = pageNum * PAGE_SIZE + PAGE_SIZE; // + PAGE_SIZE to skip first page
+            fseek(openedFile,  (long)(page * sizeof(char)), SEEK_SET);
             fwrite(data, sizeof(char), PAGE_SIZE, openedFile);
             fflush(openedFile);
             //update writePageCounter
-            writePageCounter = getWritePageCnt();
-            writePageCounter += 1;
-            writeWritePageCnt(writePageCounter);
+            writePageCounter = getWritePageCnt() + 1;
+            setWritePageCnt(writePageCounter);
             return 0;
         }
-        perror("Page does not exist!");
+        // page does not exist
         return -1;
     }
 
     RC FileHandle::appendPage(const void *data) {
-        fseek(openedFile, 0, SEEK_END);
+        fseek(openedFile, 0, SEEK_END); // write to end of file
         fwrite(data, sizeof(char), PAGE_SIZE, openedFile);
         fflush(openedFile);
         //update appendPageCounter
-        appendPageCounter = getAppendPageCnt();
-        appendPageCounter += 1;
-        writeAppendPageCnt(appendPageCounter);
+        appendPageCounter = getAppendPageCnt() + 1;
+        setAppendPageCnt(appendPageCounter);
         //update the number of pages
-        unsigned pageNumber = getNumberOfPages();
-        pageNumber++;
-        writeNumberOfPages(pageNumber);
+        unsigned pageNumber = getNumberOfPages() + 1;
+        setNumberOfPages(pageNumber);
         return 0;
     }
 
@@ -139,66 +136,66 @@ namespace PeterDB {
 
     unsigned FileHandle::getNumberOfPages() {
         unsigned numPages = 0;
-        fseek(openedFile, 0, SEEK_SET);
+        fseek(openedFile, 0, SEEK_SET); // the start
         fread(&numPages, sizeof(unsigned), 1, openedFile);
         return numPages;
     }
 
     unsigned FileHandle::getReadPageCnt() {
         unsigned readPageCnt = 0;
-        fseek(openedFile, sizeof(unsigned), SEEK_SET);
+        fseek(openedFile, sizeof(unsigned), SEEK_SET); // 1 offset
         fread(&readPageCnt, sizeof(unsigned), 1, openedFile);
         return readPageCnt;
     }
 
     unsigned FileHandle::getWritePageCnt() {
         unsigned writePageCnt = 0;
-        fseek(openedFile, sizeof(unsigned)*2, SEEK_SET);
+        fseek(openedFile, sizeof(unsigned)*2, SEEK_SET); // 2 offsets over
         fread(&writePageCnt, sizeof(unsigned), 1, openedFile);
         return writePageCnt;
     }
 
     unsigned FileHandle::getAppendPageCnt() {
-        fseek(openedFile, sizeof(unsigned)*3, SEEK_SET);
         unsigned appendPageCnt = 0;
+        fseek(openedFile, sizeof(unsigned)*3, SEEK_SET); // 3 offsets over
         fread(&appendPageCnt, sizeof(unsigned), 1, openedFile);
         return appendPageCnt;
     }
 
-    RC FileHandle::writeNumberOfPages(unsigned numOfPages) {
-        fseek(openedFile, 0, SEEK_SET);
+    RC FileHandle::setNumberOfPages(unsigned numOfPages) {
+        fseek(openedFile, 0, SEEK_SET); // the start
         fwrite(&numOfPages, sizeof(unsigned), 1, openedFile);
         fflush(openedFile);
         return 0;
     }
 
-    RC FileHandle::writeReadPageCnt(unsigned readPageCnt) {
-        fseek(openedFile, sizeof(unsigned), SEEK_SET);
+    RC FileHandle::setReadPageCnt(unsigned readPageCnt) {
+        fseek(openedFile, sizeof(unsigned), SEEK_SET); // 1 offset over
         fwrite(&readPageCnt, sizeof(unsigned), 1, openedFile);
         fflush(openedFile);
         return 0;
     }
 
-    RC FileHandle::writeWritePageCnt(unsigned writePageCnt) {
-        fseek(openedFile, sizeof(unsigned)*2, SEEK_SET);
+    RC FileHandle::setWritePageCnt(unsigned writePageCnt) {
+        fseek(openedFile, sizeof(unsigned)*2, SEEK_SET); // 2 offsets over
         fwrite(&writePageCnt, sizeof(unsigned), 1, openedFile);
         fflush(openedFile);
         return 0;
     }
 
-    RC FileHandle::writeAppendPageCnt(unsigned appendPageCnt) {
-        fseek(openedFile, sizeof(unsigned)*3, SEEK_SET);
+    RC FileHandle::setAppendPageCnt(unsigned appendPageCnt) {
+        fseek(openedFile, sizeof(unsigned)*3, SEEK_SET); // 3 offsets over
         fwrite(&appendPageCnt, sizeof(unsigned), 1, openedFile);
         fflush(openedFile);
         return 0;
     }
 
     void FileHandle::createHiddenPage() {
-        void *data = malloc(PAGE_SIZE);
+        void *pageInfo = malloc(PAGE_SIZE);
         unsigned numPages = 0, readPageCnt = 0, writePageCnt = 0, appendPageCnt = 0;
         unsigned storage_size = sizeof (unsigned);
-        char* bytePtr = static_cast<char*>(data);
 
+        char* bytePtr = static_cast<char*>(pageInfo);
         memcpy(bytePtr,&numPages,storage_size);
         bytePtr+storage_size;
         memcpy(bytePtr,&readPageCnt,storage_size);
@@ -208,9 +205,9 @@ namespace PeterDB {
         memcpy(bytePtr,&appendPageCnt,storage_size);
 
         //write the hidden page
-        fwrite(data, sizeof(char), PAGE_SIZE, openedFile);
+        fwrite(pageInfo, sizeof(char), PAGE_SIZE, openedFile);
         fflush(openedFile);
-        free(data);
+        free(pageInfo);
     }
 
 } // namespace PeterDB

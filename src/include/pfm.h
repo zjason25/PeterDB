@@ -45,18 +45,15 @@ namespace PeterDB {
         unsigned getNumberOfPages();                                        // Get the number of pages in the file
         RC collectCounterValues(unsigned &readPageCount, unsigned &writePageCount,
                                 unsigned &appendPageCount);                 // Put current counter values into variables
-
         void createHiddenPage();
         void updateOpenedFile(FILE * pageFile);
-
-    private:
         unsigned getReadPageCnt();
         unsigned getWritePageCnt();
         unsigned getAppendPageCnt();
-        RC writeNumberOfPages(unsigned numOfPages);
-        RC writeReadPageCnt(unsigned readPageCnt);
-        RC writeWritePageCnt(unsigned writePageCnt);
-        RC writeAppendPageCnt(unsigned appendPageCnt);
+        RC setNumberOfPages(unsigned numOfPages);
+        RC setReadPageCnt(unsigned readPageCnt);
+        RC setWritePageCnt(unsigned writePageCnt);
+        RC setAppendPageCnt(unsigned appendPageCnt);
     };
 
 } // namespace PeterDB
