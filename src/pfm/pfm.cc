@@ -10,13 +10,9 @@ namespace PeterDB {
         static PagedFileManager _pf_manager = PagedFileManager();
         return _pf_manager;
     }
-
     PagedFileManager::PagedFileManager() = default;
-
     PagedFileManager::~PagedFileManager() = default;
-
     PagedFileManager::PagedFileManager(const PagedFileManager &) = default;
-
     PagedFileManager &PagedFileManager::operator=(const PagedFileManager &) = default;
 
     RC PagedFileManager::createFile(const std::string &fileName) {
@@ -72,7 +68,6 @@ namespace PeterDB {
         writePageCounter = 0;
         appendPageCounter = 0;
     }
-
     FileHandle::~FileHandle() = default;
 
     RC FileHandle::readPage(PageNum pageNum, void *data) {
@@ -197,11 +192,11 @@ namespace PeterDB {
 
         char* bytePtr = static_cast<char*>(pageInfo);
         memcpy(bytePtr,&numPages,storage_size);
-        bytePtr+storage_size;
+        bytePtr+=storage_size;
         memcpy(bytePtr,&readPageCnt,storage_size);
-        bytePtr+storage_size;
+        bytePtr+=storage_size;
         memcpy(bytePtr,&writePageCnt,storage_size);
-        bytePtr+storage_size;
+        bytePtr+=storage_size;
         memcpy(bytePtr,&appendPageCnt,storage_size);
 
         //write the hidden page
