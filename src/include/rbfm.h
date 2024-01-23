@@ -55,14 +55,11 @@ namespace PeterDB {
     class RBFM_ScanIterator {
     public:
         RBFM_ScanIterator() = default;;
-
         ~RBFM_ScanIterator() = default;;
-
         // Never keep the results in the memory. When getNextRecord() is called,
         // a satisfying record needs to be fetched from the file.
         // "data" follows the same format as RecordBasedFileManager::insertRecord().
         RC getNextRecord(RID &rid, void *data) { return RBFM_EOF; };
-
         RC close() { return -1; };
     };
 
@@ -71,11 +68,8 @@ namespace PeterDB {
         static RecordBasedFileManager &instance();                          // Access to the singleton instance
 
         RC createFile(const std::string &fileName);                         // Create a new record-based file
-
         RC destroyFile(const std::string &fileName);                        // Destroy a record-based file
-
         RC openFile(const std::string &fileName, FileHandle &fileHandle);   // Open a record-based file
-
         RC closeFile(FileHandle &fileHandle);                               // Close a record-based file
 
         //  Format of the data passed into the function is the following:
@@ -132,6 +126,9 @@ namespace PeterDB {
                 const void *value,                    // used in the comparison
                 const std::vector<std::string> &attributeNames, // a list of projected attributes
                 RBFM_ScanIterator &rbfm_ScanIterator);
+
+        std::vector<bool> extractNullInformation(const void *data, const std::vector<Attribute> &recordDescriptor);
+        void *createRecordStream(const void *data, const std::vector<Attribute> &recordDescriptor, const std::vector<bool> &isNull);
 
     protected:
         RecordBasedFileManager();                                                   // Prevent construction

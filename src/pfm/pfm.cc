@@ -89,8 +89,8 @@ namespace PeterDB {
         PageNum totalPages = getNumberOfPages();
         if (totalPages == 0 && pageNum == 0) {appendPage(data);}
         else if (pageNum <= totalPages) {
-            PageNum page = pageNum * PAGE_SIZE + PAGE_SIZE; // + PAGE_SIZE to skip first page
-            fseek(openedFile,  (long)(page * sizeof(char)), SEEK_SET);
+            unsigned offset = pageNum * PAGE_SIZE + PAGE_SIZE; // + PAGE_SIZE to skip first page
+            fseek(openedFile,  (long)(offset * sizeof(char)), SEEK_SET);
             fwrite(data, sizeof(char), PAGE_SIZE, openedFile);
             fflush(openedFile);
             //update writePageCounter
@@ -186,11 +186,12 @@ namespace PeterDB {
     }
 
     void FileHandle::createHiddenPage() {
-        void *pageInfo = malloc(PAGE_SIZE);
+        // creating the hidden page does not increment page count
+        char *pageInfo = new char[PAGE_SIZE];
         unsigned numPages = 0, readPageCnt = 0, writePageCnt = 0, appendPageCnt = 0;
-        unsigned storage_size = sizeof (unsigned);
+        unsigned storage_size = sizeof(unsigned);
 
-        char* bytePtr = static_cast<char*>(pageInfo);
+        char* bytePtr = pageInfo;
         memcpy(bytePtr,&numPages,storage_size);
         bytePtr+=storage_size;
         memcpy(bytePtr,&readPageCnt,storage_size);
@@ -202,7 +203,7 @@ namespace PeterDB {
         //write the hidden page
         fwrite(pageInfo, sizeof(char), PAGE_SIZE, openedFile);
         fflush(openedFile);
-        free(pageInfo);
+        delete[] pageInfo;
     }
 
 } // namespace PeterDB
