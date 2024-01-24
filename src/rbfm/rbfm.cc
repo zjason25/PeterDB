@@ -82,7 +82,7 @@ namespace PeterDB {
                 memcpy(&page[directory + sizeof(unsigned)], &length,sizeof(unsigned));
                 memcpy(&page[directory + 2 * sizeof(unsigned)], &numberOfSlots, sizeof(unsigned));
                 memcpy(&page[directory + 3 * sizeof(unsigned)], &freeSpace, sizeof(unsigned));
-                fileHandle.appendPage(page);
+                fileHandle.writePage(0,page);
                 inserted = true;
             }
             else {
