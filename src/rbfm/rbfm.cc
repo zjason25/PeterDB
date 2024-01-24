@@ -1,6 +1,5 @@
 #include "src/include/rbfm.h"
 
-#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 #include <cmath>
@@ -48,16 +47,23 @@ namespace PeterDB {
 
         unsigned numFields = recordDescriptor.size(); // Number of fields
         int recordSize = ceil(static_cast<double>(numFields) / 8.0); // include null byte size in record
+
         for (int i = 0; i < recordDescriptor.size(); ++i) {
             if (!isNull[i]) {
-                recordSize += (recordDescriptor[i].type == TypeVarChar) ? sizeof(int) + recordDescriptor[i].length : sizeof(int);
+                if (recordDescriptor[i].type == TypeVarChar) {
+                    recordSize += sizeof(int) + recordDescriptor[i].length;
+                } else if (recordDescriptor[i].type == TypeInt) {
+                    recordSize += sizeof(int);
+                } else if (recordDescriptor[i].type == TypeReal) {
+                    recordSize += sizeof(float);
+                }
             }
         }
 
         unsigned numberOfSlots;
         unsigned freeSpace;
-        unsigned numPages = fileHandle.getNumberOfPages();
-        unsigned pageNum = numPages;
+        int numPages = fileHandle.getNumberOfPages();
+        int pageNum = numPages - 1;
         unsigned offset;
         unsigned length;
         bool read = false, inserted = false;
@@ -66,55 +72,53 @@ namespace PeterDB {
         while (!inserted) {
             // create and append a new page
             if (numPages == 0) {
-                printf("Inserting record on a new page:\n");
+//                printf("Inserting record on a new page:\n");
                 // pointer to the start of directory ( --> | ([offset_1][length_1]) | [N][F] )
                 unsigned directory = PAGE_SIZE - 4 * sizeof(unsigned); // the left-most directory slot
-                // store the record, which contains null indicator and actual data
                 memcpy(page, record, recordSize);
                 offset = 0; // pointer to the start of the record, initialized at 0;
-                length = recordSize; // length of the record
+                length = recordSize;
                 numberOfSlots = 1;
                 freeSpace = PAGE_SIZE - recordSize - 4 * sizeof(unsigned);
                 memcpy(page + directory, &offset, sizeof(unsigned)); // store offset
-                memcpy(page + directory + sizeof(unsigned), &length,
-                       sizeof(unsigned)); // store length, 4 bytes over offset
-                memcpy(page + (PAGE_SIZE - sizeof(unsigned)), &numberOfSlots, sizeof(unsigned));
-                memcpy(page + (PAGE_SIZE - 2 * sizeof(unsigned)), &freeSpace, sizeof(unsigned));
+                memcpy(page + directory + sizeof(unsigned), &length,sizeof(unsigned));
+                memcpy(page + (PAGE_SIZE - 2 * sizeof(unsigned)), &numberOfSlots, sizeof(unsigned));
+                memcpy(page + (PAGE_SIZE -  sizeof(unsigned)), &freeSpace, sizeof(unsigned));
                 fileHandle.appendPage(page);
-                pageNum++;
                 inserted = true;
-            } else {
+            }
+            else {
+//                printf("Trying to find space on existing page:\n");
                 fileHandle.readPage(pageNum, page);
-                memcpy(&freeSpace, &page[PAGE_SIZE - 2 * sizeof(unsigned)], sizeof(unsigned));
+                memcpy(&freeSpace, &page[PAGE_SIZE - sizeof(unsigned)], sizeof(unsigned));
                 // if there's space, go to the leftmost entry in the directory and find out where it ends in byte array
                 if (freeSpace >= recordSize) {
-                    printf("Inserting record on an existing page:\n");
-                    memcpy(&numberOfSlots, &page[PAGE_SIZE - sizeof(unsigned)], sizeof(unsigned));
+//                    printf("Inserting record on an existing page:\n");
+                    memcpy(&numberOfSlots, &page[PAGE_SIZE - 2 * sizeof(unsigned)], sizeof(unsigned));
                     unsigned leftMostEntry = PAGE_SIZE - 2 * sizeof(unsigned) - numberOfSlots * 2 * sizeof(unsigned);
                     memcpy(&offset, &page[leftMostEntry], sizeof(unsigned));
                     memcpy(&length, &page[leftMostEntry + sizeof(unsigned)], sizeof(unsigned));
 
                     memcpy(page + offset + length, record, recordSize);
-                    offset = offset +
-                             length; // offset of the new byte array is (offset  + length) of previous byte array
+                    offset = offset + length; // offset of the new array is (offset + length) of previous array
                     length = recordSize;
                     numberOfSlots += 1;
                     freeSpace -= recordSize;
                     memcpy(&page[leftMostEntry - sizeof(unsigned)], &length, sizeof(unsigned));
                     memcpy(&page[leftMostEntry - 2 * sizeof(unsigned)], &offset, sizeof(unsigned));
-                    memcpy(page + (PAGE_SIZE - sizeof(unsigned)), &numberOfSlots, sizeof(unsigned));
-                    memcpy(page + (PAGE_SIZE - 2 * sizeof(unsigned)), &freeSpace, sizeof(unsigned));
+                    memcpy(page + (PAGE_SIZE - 2 * sizeof(unsigned)), &numberOfSlots, sizeof(unsigned));
+                    memcpy(page + (PAGE_SIZE - sizeof(unsigned)), &freeSpace, sizeof(unsigned));
                     fileHandle.writePage(pageNum, page);
                     inserted = true;
                 } else {
                     //if no enough space in last page, go to first page
-                    if (pageNum == (fileHandle.getNumberOfPages()) && !read) {
-                        pageNum = 1;
+                    if (pageNum == (fileHandle.getNumberOfPages() - 1) && !read) {
+                        pageNum = 0;
                         read = true;
                     }
                         //no space in all pages, append a new page
-                    else if ((pageNum == fileHandle.getNumberOfPages()) && read) {
-                        printf("Appending a new page:\n");
+                    else if ((pageNum == fileHandle.getNumberOfPages() - 1) && read) {
+//                        printf("Appending a new page:\n");
                         unsigned directory = PAGE_SIZE - 4 * sizeof(unsigned); // the left-most directory slot
                         // store the record, which contains null indicator and actual data
                         memcpy(page, record, recordSize);
@@ -123,17 +127,17 @@ namespace PeterDB {
                         numberOfSlots = 1;
                         freeSpace = PAGE_SIZE - recordSize - 4 * sizeof(unsigned); // entry slot + NF + record_length
                         memcpy(page + directory, &offset, sizeof(unsigned)); // store offset
-                        memcpy(page + directory + sizeof(unsigned), &length,
-                               sizeof(unsigned)); // store length, 4 bytes over offset
-                        memcpy(page + (PAGE_SIZE - sizeof(unsigned)), &numberOfSlots, sizeof(unsigned));
-                        memcpy(page + (PAGE_SIZE - 2 * sizeof(unsigned)), &freeSpace, sizeof(unsigned));
+                        memcpy(page + directory + sizeof(unsigned), &length,sizeof(unsigned));
+                        memcpy(page + (PAGE_SIZE - 2 * sizeof(unsigned)), &numberOfSlots, sizeof(unsigned));
+                        memcpy(page + (PAGE_SIZE - sizeof(unsigned)), &freeSpace, sizeof(unsigned));
                         fileHandle.appendPage(page);
                         inserted = true;
                     }
-                    pageNum++;
                 }
             }
+            pageNum++;
         }
+        printf("Record inserted:\n");
         rid.slotNum = numberOfSlots;
         rid.pageNum = pageNum;
         delete[] record;
@@ -145,26 +149,13 @@ namespace PeterDB {
                                           const RID &rid, void *data) {
         char* page = new char[PAGE_SIZE * sizeof(char)];
         fileHandle.readPage(rid.pageNum, page);
-        std::vector<bool> isNull = extractNullInformation(page, recordDescriptor);
-
-        unsigned numFields = recordDescriptor.size();
-        int recordSize = ceil(static_cast<double>(numFields) / 8.0);
-        for (int i = 0; i < recordDescriptor.size(); ++i) {
-            if (!isNull[i]) {
-                recordSize += (recordDescriptor[i].type == TypeVarChar) ? sizeof(int) + recordDescriptor[i].length : sizeof(int);
-            }
-        }
-
         unsigned offset;
         unsigned length;
         memcpy(&offset, page+PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned), sizeof(unsigned));
         memcpy(&length, page+PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned) + sizeof(unsigned), sizeof(unsigned));
-        char* record = page + offset;
-
-        memcpy(data, record, length);
+        memcpy(data, page + offset, length);
         delete[] page;
         return 0;
-
     }
 
     RC RecordBasedFileManager::printRecord(const std::vector<Attribute> &recordDescriptor, const void *data,
@@ -195,7 +186,8 @@ namespace PeterDB {
                     out << name + ": " << real;
                     charData += sizeof(float);
                 }
-            } else {out << name << ": NULL";}
+            }
+            else {out << name << ": NULL";}
             if (linebreak%4 != 0) {
                 out << ", ";
                 linebreak++;
@@ -293,8 +285,6 @@ namespace PeterDB {
         }
         return (void *)recordStream;
     }
-
-
 
 } // namespace PeterDB
 

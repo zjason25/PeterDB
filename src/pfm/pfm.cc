@@ -87,7 +87,7 @@ namespace PeterDB {
 
     RC FileHandle::writePage(PageNum pageNum, const void *data) {
         PageNum totalPages = getNumberOfPages();
-        if (totalPages == 0 && pageNum == 0) {appendPage(data);}
+        if (totalPages == 0) {appendPage(data);}
         else if (pageNum <= totalPages) {
             unsigned offset = pageNum * PAGE_SIZE + PAGE_SIZE; // + PAGE_SIZE to skip first page
             fseek(openedFile,  (long)(offset * sizeof(char)), SEEK_SET);
