@@ -46,7 +46,7 @@ namespace PeterDB {
         const char* record = (char*)createRecordStream(data, recordDescriptor, isNull);
 
         unsigned numFields = recordDescriptor.size(); // Number of fields
-        int recordSize = ceil(static_cast<double>(numFields) / 8.0); // include null byte size in record
+        unsigned recordSize = ceil(static_cast<double>(numFields) / 8.0); // include null byte size in record
 
         for (int i = 0; i < recordDescriptor.size(); ++i) {
             if (!isNull[i]) {
@@ -61,12 +61,12 @@ namespace PeterDB {
         }
         unsigned numberOfSlots;
         unsigned freeSpace;
-        int numPages = fileHandle.getNumberOfPages();
-        int pageNum = numPages - 1;
+        unsigned numPages = fileHandle.getNumberOfPages();
+        int pageNum = (int)numPages - 1;
         unsigned offset;
         unsigned length;
         bool read = false, inserted = false;
-        char* page = new char[PAGE_SIZE * sizeof(char)];
+        char* page = new char[PAGE_SIZE];
 
         while (!inserted) {
             // create and append a new page
@@ -78,10 +78,10 @@ namespace PeterDB {
                 length = recordSize;
                 numberOfSlots = 1;
                 freeSpace = PAGE_SIZE - recordSize - 4 * sizeof(unsigned);
-                memcpy(page + directory, &offset, sizeof(unsigned)); // store offset
-                memcpy(page + directory + sizeof(unsigned), &length,sizeof(unsigned));
-                memcpy(page + (PAGE_SIZE - 2 * sizeof(unsigned)), &numberOfSlots, sizeof(unsigned));
-                memcpy(page + (PAGE_SIZE -  sizeof(unsigned)), &freeSpace, sizeof(unsigned));
+                memcpy(&page[directory], &offset, sizeof(unsigned)); // store offset
+                memcpy(&page[directory + sizeof(unsigned)], &length,sizeof(unsigned));
+                memcpy(&page[directory + 2 * sizeof(unsigned)], &numberOfSlots, sizeof(unsigned));
+                memcpy(&page[directory + 3 * sizeof(unsigned)], &freeSpace, sizeof(unsigned));
                 fileHandle.appendPage(page);
                 inserted = true;
             }
@@ -102,8 +102,8 @@ namespace PeterDB {
                     freeSpace -= (recordSize + 2 * sizeof(unsigned)); // record and slot
                     memcpy(&page[leftMostEntry - sizeof(unsigned)], &length, sizeof(unsigned));
                     memcpy(&page[leftMostEntry - 2 * sizeof(unsigned)], &offset, sizeof(unsigned));
-                    memcpy(page + (PAGE_SIZE - 2 * sizeof(unsigned)), &numberOfSlots, sizeof(unsigned));
-                    memcpy(page + (PAGE_SIZE - sizeof(unsigned)), &freeSpace, sizeof(unsigned));
+                    memcpy(&page[PAGE_SIZE - 2 * sizeof(unsigned)], &numberOfSlots, sizeof(unsigned));
+                    memcpy(&page[PAGE_SIZE - sizeof(unsigned)], &freeSpace, sizeof(unsigned));
                     fileHandle.writePage(pageNum, page);
                     inserted = true;
                 } else {
@@ -121,10 +121,10 @@ namespace PeterDB {
                         length = recordSize; // length of the record
                         numberOfSlots = 1;
                         freeSpace = PAGE_SIZE - recordSize - 4 * sizeof(unsigned); // entry slot + NF + record_length
-                        memcpy(page + directory, &offset, sizeof(unsigned)); // store offset
-                        memcpy(page + directory + sizeof(unsigned), &length,sizeof(unsigned));
-                        memcpy(page + (PAGE_SIZE - 2 * sizeof(unsigned)), &numberOfSlots, sizeof(unsigned));
-                        memcpy(page + (PAGE_SIZE - sizeof(unsigned)), &freeSpace, sizeof(unsigned));
+                        memcpy(&page[directory], &offset, sizeof(unsigned)); // store offset
+                        memcpy(&page[directory + sizeof(unsigned)], &length,sizeof(unsigned));
+                        memcpy(&page[PAGE_SIZE - 2 * sizeof(unsigned)], &numberOfSlots, sizeof(unsigned));
+                        memcpy(&page[PAGE_SIZE - sizeof(unsigned)], &freeSpace, sizeof(unsigned));
                         fileHandle.appendPage(page);
                         inserted = true;
                     }
@@ -221,7 +221,7 @@ namespace PeterDB {
         unsigned numFields = recordDescriptor.size();
         unsigned nullIndicatorSize = ceil(static_cast<double>(numFields) / 8.0);
         char *nullsIndicator = new char[nullIndicatorSize];
-        memcpy(nullsIndicator, data, nullIndicatorSize);
+        memcpy(nullsIndicator, (char*)data, nullIndicatorSize);
 
         std::vector<bool> isNull(numFields, false);
         for (int i = 0; i < numFields; ++i) {
@@ -239,8 +239,10 @@ namespace PeterDB {
     void *RecordBasedFileManager::createRecordStream(const void *data, const std::vector<Attribute> &recordDescriptor, const std::vector<bool> &isNull) {
         // Calculate the size of the new record stream
         unsigned numFields = recordDescriptor.size();
-        unsigned recordSize = ceil(static_cast<double>(numFields) / 8.0); // Include size for null-indicator bytes
-        for (int i = 0; i < recordDescriptor.size(); ++i) {
+        unsigned recordSize = 0;
+        unsigned nullIndicatorSize = ceil(static_cast<double>(numFields) / 8.0); // Include size for null-indicator bytes
+        recordSize += nullIndicatorSize;
+        for (int i = 0; i < numFields; ++i) {
             if (!isNull[i]) {
                 if (recordDescriptor[i].type == TypeVarChar) {
                     recordSize += sizeof(int) + recordDescriptor[i].length;
@@ -258,13 +260,10 @@ namespace PeterDB {
         char *currentPointer = recordStream;
 
         // Copy the null-indicator bytes
-        const unsigned nullIndicatorSize = ceil(static_cast<double>(numFields) / 8.0);
-        memcpy(currentPointer, data, nullIndicatorSize);
+        memcpy(currentPointer, (char*)data, nullIndicatorSize);
         currentPointer += nullIndicatorSize;
-
-        // Set the data pointer after the null-indicator section
         const char *dataPointer = (const char *)data + nullIndicatorSize;
-        unsigned fieldSize;
+        unsigned fieldSize = 0;
         for (int i = 0; i < recordDescriptor.size(); ++i) {
             if (!isNull[i]) {
                 if (recordDescriptor[i].type == TypeVarChar) {
@@ -282,7 +281,7 @@ namespace PeterDB {
             }
             // No need for an else branch as NULL fields have no representation in the data stream
         }
-        return (void *)recordStream;
+        return recordStream;
     }
 } // namespace PeterDB
 
