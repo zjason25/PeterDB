@@ -909,7 +909,6 @@ namespace PeterDBTesting {
         }
 
         pageCount = fileHandle.getNumberOfPages();
-        printf("pageCount is: %d\n", pageCount);
         // check for page count, page count (excluding hidden pages) should be exactly 100
         ASSERT_EQ(pageCount, numLargeSmallRecords) << "No new page should be appended.";
 

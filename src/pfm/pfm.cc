@@ -133,6 +133,7 @@ namespace PeterDB {
         unsigned numPages = 0;
         fseek(openedFile, 0, SEEK_SET); // the start
         fread(&numPages, sizeof(unsigned), 1, openedFile);
+        printf("pageCount is: %d\n", numPages);
         return numPages;
     }
 
