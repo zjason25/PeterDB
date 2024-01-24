@@ -113,11 +113,11 @@ namespace PeterDB {
                 } else {
                     //if no enough space in last page, go to first page
                     if (pageNum == (fileHandle.getNumberOfPages() - 1) && !read) {
-                        pageNum = 0;
+                        pageNum = -1;
                         read = true;
                     }
                         //no space in all pages, append a new page
-                    else if ((pageNum == fileHandle.getNumberOfPages() - 1) && read) {
+                    else if ((pageNum == fileHandle.getNumberOfPages()) && read) {
 //                        printf("Appending a new page:\n");
                         unsigned directory = PAGE_SIZE - 4 * sizeof(unsigned); // the left-most directory slot
                         // store the record, which contains null indicator and actual data
@@ -137,7 +137,7 @@ namespace PeterDB {
             }
             pageNum++;
         }
-        printf("Record inserted:\n");
+        printf("Record inserted\n\n:");
         rid.slotNum = numberOfSlots;
         rid.pageNum = pageNum;
         delete[] record;
@@ -247,12 +247,14 @@ namespace PeterDB {
         for (int i = 0; i < recordDescriptor.size(); ++i) {
             if (!isNull[i]) {
                 if (recordDescriptor[i].type == TypeVarChar) {
-                    recordSize = sizeof(int) + recordDescriptor[i].length;
+                    recordSize += sizeof(int) + recordDescriptor[i].length;
                 }
                 else if (recordDescriptor[i].type == TypeInt) {
-                    recordSize = sizeof(int);
+                    recordSize += sizeof(int);
                 }
-                else {recordSize = sizeof(float);}
+                else if (recordDescriptor[i].type == TypeReal) {
+                    recordSize += sizeof(float);
+                }
             }
         }
         // Allocate memory for the new record stream
@@ -266,17 +268,18 @@ namespace PeterDB {
 
         // Set the data pointer after the null-indicator section
         const char *dataPointer = (const char *)data + nullIndicatorSize;
-
+        unsigned fieldSize;
         for (int i = 0; i < recordDescriptor.size(); ++i) {
             if (!isNull[i]) {
-                unsigned fieldSize;
                 if (recordDescriptor[i].type == TypeVarChar) {
                     fieldSize = sizeof(int) + recordDescriptor[i].length;
                 }
                 else if (recordDescriptor[i].type == TypeInt) {
                     fieldSize = sizeof(int);
                 }
-                else {fieldSize = sizeof(float);}
+                else if (recordDescriptor[i].type == TypeReal) {
+                    fieldSize = sizeof(float);
+                }
                 memcpy(currentPointer, dataPointer, fieldSize);
                 currentPointer += fieldSize;
                 dataPointer += fieldSize;
@@ -285,6 +288,5 @@ namespace PeterDB {
         }
         return (void *)recordStream;
     }
-
 } // namespace PeterDB
 
