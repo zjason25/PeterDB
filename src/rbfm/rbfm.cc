@@ -82,7 +82,7 @@ namespace PeterDB {
                 memcpy(&page[directory + sizeof(unsigned)], &length,sizeof(unsigned));
                 memcpy(&page[directory + 2 * sizeof(unsigned)], &numberOfSlots, sizeof(unsigned));
                 memcpy(&page[directory + 3 * sizeof(unsigned)], &freeSpace, sizeof(unsigned));
-                fileHandle.writePage(0,page);
+                fileHandle.appendPage(page);
                 inserted = true;
             }
             else {
@@ -94,8 +94,7 @@ namespace PeterDB {
                     unsigned leftMostEntry = PAGE_SIZE - 2 * sizeof(unsigned) - numberOfSlots * 2 * sizeof(unsigned);
                     memcpy(&offset, &page[leftMostEntry], sizeof(unsigned));
                     memcpy(&length, &page[leftMostEntry + sizeof(unsigned)], sizeof(unsigned));
-
-                    memcpy(page + offset + length, record, recordSize);
+                    memcpy(&page[offset+length], record, recordSize);
                     offset = offset + length; // offset of the new array is (offset + length) of previous array
                     length = recordSize;
                     numberOfSlots += 1;
@@ -107,12 +106,11 @@ namespace PeterDB {
                     fileHandle.writePage(pageNum, page);
                     inserted = true;
                 } else {
-                    //if no enough space in last page, go to first page
+                    //if no enough space in last page, check first page
                     if (pageNum == (fileHandle.getNumberOfPages() - 1) && !read) {
                         pageNum = -1;
                         read = true;
-                    }
-                        //no space in all pages, append a new page
+                    } //no space in all pages, append a new page
                     else if ((pageNum == fileHandle.getNumberOfPages()) && read) {
                         unsigned directory = PAGE_SIZE - 4 * sizeof(unsigned); // the left-most directory slot
                         // store the record, which contains null indicator and actual data
