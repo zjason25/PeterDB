@@ -71,7 +71,6 @@ namespace PeterDB {
         while (!inserted) {
             // create and append a new page
             if (numPages == 0) {
-//                printf("Inserting record on a new page:\n");
                 // pointer to the start of directory ( --> | ([offset_1][length_1]) | [N][F] )
                 unsigned directory = PAGE_SIZE - 4 * sizeof(unsigned); // the left-most directory slot
                 memcpy(page, record, recordSize);
@@ -87,12 +86,10 @@ namespace PeterDB {
                 inserted = true;
             }
             else {
-//                printf("Trying to find space on existing page:\n");
                 fileHandle.readPage(pageNum, page);
                 memcpy(&freeSpace, &page[PAGE_SIZE - sizeof(unsigned)], sizeof(unsigned));
                 // if there's space, go to the leftmost entry in the directory and find out where it ends in byte array
                 if (freeSpace >= recordSize) {
-//                    printf("Inserting record on an existing page:\n");
                     memcpy(&numberOfSlots, &page[PAGE_SIZE - 2 * sizeof(unsigned)], sizeof(unsigned));
                     unsigned leftMostEntry = PAGE_SIZE - 2 * sizeof(unsigned) - numberOfSlots * 2 * sizeof(unsigned);
                     memcpy(&offset, &page[leftMostEntry], sizeof(unsigned));
@@ -117,7 +114,6 @@ namespace PeterDB {
                     }
                         //no space in all pages, append a new page
                     else if ((pageNum == fileHandle.getNumberOfPages()) && read) {
-//                        printf("Appending a new page:\n");
                         unsigned directory = PAGE_SIZE - 4 * sizeof(unsigned); // the left-most directory slot
                         // store the record, which contains null indicator and actual data
                         memcpy(page, record, recordSize);
