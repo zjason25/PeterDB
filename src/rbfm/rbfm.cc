@@ -59,7 +59,6 @@ namespace PeterDB {
                 }
             }
         }
-
         unsigned numberOfSlots;
         unsigned freeSpace;
         int numPages = fileHandle.getNumberOfPages();
@@ -103,7 +102,7 @@ namespace PeterDB {
                     offset = offset + length; // offset of the new array is (offset + length) of previous array
                     length = recordSize;
                     numberOfSlots += 1;
-                    freeSpace -= recordSize;
+                    freeSpace -= (recordSize + 2 * sizeof(unsigned)); // record and slot
                     memcpy(&page[leftMostEntry - sizeof(unsigned)], &length, sizeof(unsigned));
                     memcpy(&page[leftMostEntry - 2 * sizeof(unsigned)], &offset, sizeof(unsigned));
                     memcpy(page + (PAGE_SIZE - 2 * sizeof(unsigned)), &numberOfSlots, sizeof(unsigned));
@@ -150,8 +149,8 @@ namespace PeterDB {
         fileHandle.readPage(rid.pageNum, page);
         unsigned offset;
         unsigned length;
-        memcpy(&offset, page+PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned), sizeof(unsigned));
-        memcpy(&length, page+PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned) + sizeof(unsigned), sizeof(unsigned));
+        memcpy(&offset, page+(PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned)), sizeof(unsigned));
+        memcpy(&length, page+(PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned) + sizeof(unsigned)), sizeof(unsigned));
         memcpy(data, page + offset, length);
         delete[] page;
         return 0;
@@ -163,9 +162,11 @@ namespace PeterDB {
         int nullIndicatorSize = ceil(static_cast<double>(recordDescriptor.size()) / 8.0);
         const char* charData = static_cast<const char*>(data); // for string bytes reading
         charData += nullIndicatorSize;
+        unsigned numFields = recordDescriptor.size();
+        unsigned linebreak = 1;
 
         std::string name;
-        int num, linebreak=1;
+        int num;
         float real;
         for (int i = 0; i < recordDescriptor.size(); ++i) {
             name = recordDescriptor[i].name;
@@ -187,7 +188,7 @@ namespace PeterDB {
                 }
             }
             else {out << name << ": NULL";}
-            if (linebreak%4 != 0) {
+            if (linebreak % numFields != 0) {
                 out << ", ";
                 linebreak++;
             } else {
