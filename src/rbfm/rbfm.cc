@@ -137,7 +137,6 @@ namespace PeterDB {
             }
             pageNum++;
         }
-        printf("Record inserted\n\n:");
         rid.slotNum = numberOfSlots;
         rid.pageNum = pageNum;
         delete[] record;
