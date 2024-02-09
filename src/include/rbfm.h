@@ -128,7 +128,7 @@ namespace PeterDB {
                 RBFM_ScanIterator &rbfm_ScanIterator);
 
         std::vector<bool> extractNullInformation(const void *data, const std::vector<Attribute> &recordDescriptor);
-        void *createRecordStream(const void *data, const std::vector<Attribute> &recordDescriptor, const std::vector<bool> &isNull);
+        void *createRecordStream(const void *data, const std::vector<Attribute> &recordDescriptor, const std::vector<bool> &isNull, unsigned &recordSize);
 
     protected:
         RecordBasedFileManager();                                                   // Prevent construction
