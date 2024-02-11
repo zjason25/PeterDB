@@ -163,12 +163,24 @@ namespace PeterDB {
         char* page = new char[PAGE_SIZE];
         fileHandle.readPage(rid.pageNum, page);
         unsigned offset, length;
-        memcpy(&length, page+(PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned) + sizeof(unsigned)), sizeof(unsigned));
+        memcpy(&offset, page + (PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned)), sizeof(unsigned));
+        memcpy(&length, page + (PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned) + sizeof(unsigned)), sizeof(unsigned));
+
+        // read from a tombstone
+        if (length >= TOMBSTONE_MARKER) {
+            unsigned pageNum = offset - TOMBSTONE_MARKER;
+            unsigned slotNum = length - TOMBSTONE_MARKER;
+            fileHandle.readPage(pageNum, page);
+            memcpy(&offset, page + (PAGE_SIZE - 2 * sizeof(unsigned) - slotNum * 2 * sizeof(unsigned)), sizeof(unsigned));
+            memcpy(&length, page + (PAGE_SIZE - 2 * sizeof(unsigned) - slotNum * 2 * sizeof(unsigned) + sizeof(unsigned)), sizeof(unsigned));
+            memcpy(data, page + offset, length);
+            delete[] page;
+            return 0;
+        }
         // if a record was deleted, slot will have 0
         if (length == 0) {
             return -1;
         }
-        memcpy(&offset, page+(PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned)), sizeof(unsigned));
 
         memcpy(data, page + offset, length);
         delete[] page;
@@ -225,12 +237,24 @@ namespace PeterDB {
         char* page = new char[PAGE_SIZE];
         fileHandle.readPage(rid.pageNum, page);
         unsigned offset, length;
-        memcpy(&length, page+(PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned) + sizeof(unsigned)), sizeof(unsigned));
+        memcpy(&offset, page + (PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned)), sizeof(unsigned));
+        memcpy(&length, page + (PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned) + sizeof(unsigned)), sizeof(unsigned));
         // deleting a non-existent record returns error
+        if (length >= TOMBSTONE_MARKER) {
+            RID rid_t;
+            rid_t.pageNum = offset - TOMBSTONE_MARKER;
+            rid_t.slotNum = length - TOMBSTONE_MARKER;
+            deleteRecord(fileHandle, recordDescriptor, rid_t);
+            offset = 0;
+            length = 0;
+            memcpy(page + (PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned)), &offset, sizeof(unsigned));
+            memcpy(page + (PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned) + sizeof(unsigned)), &length, sizeof(unsigned));
+            fileHandle.writePage(rid.pageNum, page);
+            return 0;
+        }
         if (length == 0) {
             return -1;
         }
-        memcpy(&offset, page+(PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned)), sizeof(unsigned));
 
         // find directoryStart: the furthest left the directory goes
         unsigned numberOfSlots, freeSpace;
@@ -260,8 +284,8 @@ namespace PeterDB {
         offset = 0;
         length = 0;
 
-        memcpy(page + (PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned) + sizeof(unsigned)), &length, sizeof(unsigned));
         memcpy(page + (PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned)), &offset, sizeof(unsigned));
+        memcpy(page + (PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned) + sizeof(unsigned)), &length, sizeof(unsigned));
         memcpy(page + PAGE_SIZE - 2 * sizeof(unsigned), &numberOfSlots, sizeof(unsigned));
         memcpy(page + PAGE_SIZE - 1 * sizeof(unsigned), &freeSpace, sizeof(unsigned));
 
@@ -276,12 +300,12 @@ namespace PeterDB {
         char* page = new char[PAGE_SIZE];
         fileHandle.readPage(rid.pageNum, page);
         unsigned offset, length;
-        memcpy(&length, page+(PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned) + sizeof(unsigned)), sizeof(unsigned));
+        memcpy(&length, page + (PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned) + sizeof(unsigned)), sizeof(unsigned));
         // updating a non-existent record returns error
         if (length == 0) {
             return -1;
         }
-        memcpy(&offset, page+(PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned)), sizeof(unsigned));
+        memcpy(&offset, page + (PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned)), sizeof(unsigned));
 
         // prepare new record to insert
         std::vector<bool> isNull = extractNullInformation(data, recordDescriptor);
@@ -312,25 +336,39 @@ namespace PeterDB {
                     memcpy(dirPtr + i * (sizeof(unsigned) * 2), &slotOffset, sizeof(unsigned));
                 }
             }
+            // offset stays the same
         }
+        // if old record is larger than new record, delete it
         else {
             deleteRecord(fileHandle, recordDescriptor, rid);
             memcpy(&freeSpace, page + PAGE_SIZE - 1 * sizeof(unsigned), sizeof(unsigned));
+            // insert at the end of current page
             if (freeSpace >= recordSize) {
-
+                unsigned endOfRecords = directoryEnd - freeSpace;
+                memcpy(page + endOfRecords, record, recordSize);
+                freeSpace -= recordSize;
+                offset = endOfRecords;
+            }
+            else {
+                // insert in new page and leave tombstone: [pageNum_t][slotNum_t]
+                RID rid_t;
+                insertRecord(fileHandle, recordDescriptor, data, rid_t);
+                unsigned pageNum_t = rid_t.pageNum + TOMBSTONE_MARKER; // length stores pageNum
+                unsigned slotNum_t = rid_t.slotNum + TOMBSTONE_MARKER; // offset stores slotNum
+                memcpy(page + (PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned)), &pageNum_t, sizeof(unsigned));
+                memcpy(page + (PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned) + sizeof(unsigned)), &slotNum_t, sizeof(unsigned));
+                fileHandle.writePage(rid.pageNum, page);
+                return 0;
             }
         }
 
         length = recordSize;
+        memcpy(page + (PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned)), &offset, sizeof(unsigned));
+        memcpy(page + (PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned) + sizeof(unsigned)), &length, sizeof(unsigned));
 
+        fileHandle.writePage(rid.pageNum, page);
 
-
-
-
-
-
-
-        return -1;
+        return 0;
     }
 
     RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,

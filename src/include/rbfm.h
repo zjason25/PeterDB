@@ -1,6 +1,8 @@
 #ifndef _rbfm_h_
 #define _rbfm_h_
 
+#define TOMBSTONE_MARKER 4096
+
 #include <vector>
 
 #include "pfm.h"
