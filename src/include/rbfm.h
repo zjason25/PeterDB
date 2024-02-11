@@ -129,6 +129,7 @@ namespace PeterDB {
 
         std::vector<bool> extractNullInformation(const void *data, const std::vector<Attribute> &recordDescriptor);
         void *createRecordStream(const void *data, const std::vector<Attribute> &recordDescriptor, const std::vector<bool> &isNull, unsigned &recordSize);
+        unsigned getRecordSize(const void *data, const std::vector<Attribute> &recordDescriptor, std::vector<bool> isNull);
 
     protected:
         RecordBasedFileManager();                                                   // Prevent construction

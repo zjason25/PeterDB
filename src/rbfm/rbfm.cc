@@ -43,28 +43,7 @@ namespace PeterDB {
     RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                             const void *data, RID &rid) {
         std::vector<bool> isNull = extractNullInformation(data, recordDescriptor);
-        unsigned nullIndicatorSize = ceil(static_cast<double>(recordDescriptor.size()) / 8.0);
-        unsigned recordSize = 0;
-        recordSize += nullIndicatorSize;
-        char* dataPtr = (char*)data + nullIndicatorSize; // skip past null fields
-
-        for (int i = 0; i < recordDescriptor.size(); ++i) {
-            if (!isNull[i]) {
-                if (recordDescriptor[i].type == TypeVarChar) {
-                    int varcharLength = 0;
-                    memcpy(&varcharLength, dataPtr, sizeof(int));
-                    recordSize += sizeof(int) + varcharLength;
-                    dataPtr += sizeof(int) + varcharLength;
-                } else if (recordDescriptor[i].type == TypeInt) {
-                    recordSize += sizeof(int);
-                    dataPtr += sizeof(int);
-                } else if (recordDescriptor[i].type == TypeReal) {
-                    recordSize += sizeof(float);
-                    dataPtr += sizeof(float);
-                }
-            }
-        }
-
+        unsigned recordSize = getRecordSize(data, recordDescriptor, isNull);
         const char* record = (char*)createRecordStream(data, recordDescriptor, isNull, recordSize);
 
         unsigned numberOfSlots, freeSpace;
@@ -96,27 +75,35 @@ namespace PeterDB {
             else {
                 fileHandle.readPage(pageNum, page);
                 memcpy(&freeSpace, page + PAGE_SIZE - sizeof(unsigned), sizeof(unsigned));
-                // if there's space in rid.pageNum, insert there
-                if (freeSpace >= (recordSize + 2 * sizeof(unsigned))) {
-                    unsigned slotToInsert = 0;
-                    memcpy(&numberOfSlots, page + PAGE_SIZE - 2 * sizeof(unsigned), sizeof(unsigned));
-                    unsigned directoryEnd = PAGE_SIZE - 2 * sizeof(unsigned) - numberOfSlots * 2 * sizeof(unsigned);
-
-                    // first look through available slots: slotNum start from 1
-                    for (int i = 0; i < numberOfSlots; i++) {
-                        unsigned slotLength;
-                        memcpy(&slotLength, page + directoryEnd + i * (sizeof(unsigned) * 2) + sizeof(unsigned), sizeof(unsigned));
-                        if (slotLength == 0) {
-                            slotToInsert = numberOfSlots - i;
-                            break;
-                        }
+                memcpy(&numberOfSlots, page + PAGE_SIZE - 2 * sizeof(unsigned), sizeof(unsigned));
+                unsigned directoryEnd = PAGE_SIZE - 2 * sizeof(unsigned) - numberOfSlots * 2 * sizeof(unsigned);
+                unsigned slotToInsert = 0;
+                bool canInsert = false;
+                // first look through available slots: slotNum start from 1
+                for (int i = 0; i < numberOfSlots; i++) {
+                    unsigned slotLength;
+                    memcpy(&slotLength, page + directoryEnd + i * (sizeof(unsigned) * 2) + sizeof(unsigned), sizeof(unsigned));
+                    if (slotLength == 0) {
+                        slotToInsert = numberOfSlots - i;
+                        break;
                     }
+                }
+                // if there's space in rid.pageNum, insert there
+                if (slotToInsert != 0) {
+                    if (freeSpace >= recordSize) {
+                        canInsert = true;
+                    }
+                }
+                else if (freeSpace >= recordSize + 2 * sizeof(unsigned)) {
+                    canInsert = true;
+                }
+                if (canInsert) {
                     // locate last byte array and insert after it
-                    memcpy(&offset, page + directoryEnd, sizeof(int));
-                    memcpy(&length, page + directoryEnd + sizeof(unsigned), sizeof(int));
-                    memcpy(page + offset + length , record, recordSize);
+                    unsigned endOfRecords = directoryEnd - freeSpace;
+                    memcpy(page + endOfRecords , record, recordSize);
+
                     // prepare to update directory and slot
-                    offset = offset + length; // offset of the new array is (offset + length) of previous array
+                    offset = endOfRecords; // offset of the new array is (offset + length) of previous array
                     length = recordSize;
                     numberOfSlots += 1;
                     freeSpace -= (recordSize + 2 * sizeof(unsigned)); // record and slot
@@ -245,7 +232,6 @@ namespace PeterDB {
         }
         memcpy(&offset, page+(PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned)), sizeof(unsigned));
 
-
         // find directoryStart: the furthest left the directory goes
         unsigned numberOfSlots, freeSpace;
         memcpy(&numberOfSlots, page + PAGE_SIZE - 2 * sizeof(unsigned), sizeof(unsigned));
@@ -262,15 +248,15 @@ namespace PeterDB {
         char* dirPtr = page + directoryEnd;
         for (int i = 0; i < numberOfSlots; i++) {
             unsigned slotOffset;
-            memcpy(&slotOffset, page + directoryEnd + i * (sizeof(unsigned) * 2), sizeof(unsigned));
+            memcpy(&slotOffset, dirPtr + i * (sizeof(unsigned) * 2), sizeof(unsigned));
 
             if (slotOffset > recordToDeleteOffset) {
                 slotOffset -= recordToDeleteLength;
-                memcpy(page + directoryEnd + i * (sizeof(unsigned) * 2), &slotOffset, sizeof(unsigned));
+                memcpy(dirPtr + i * (sizeof(unsigned) * 2), &slotOffset, sizeof(unsigned));
             }
         }
 
-        freeSpace += length;
+        freeSpace += length; // numberOfSlots remain the same
         offset = 0;
         length = 0;
 
@@ -287,6 +273,63 @@ namespace PeterDB {
 
     RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                             const void *data, const RID &rid) {
+        char* page = new char[PAGE_SIZE];
+        fileHandle.readPage(rid.pageNum, page);
+        unsigned offset, length;
+        memcpy(&length, page+(PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned) + sizeof(unsigned)), sizeof(unsigned));
+        // updating a non-existent record returns error
+        if (length == 0) {
+            return -1;
+        }
+        memcpy(&offset, page+(PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned)), sizeof(unsigned));
+
+        // prepare new record to insert
+        std::vector<bool> isNull = extractNullInformation(data, recordDescriptor);
+        unsigned recordSize = getRecordSize(data, recordDescriptor, isNull);
+        const char* record = (char*)createRecordStream(data, recordDescriptor, isNull, recordSize);
+
+        // find old record
+        unsigned numberOfSlots, freeSpace;
+        memcpy(&numberOfSlots, page + PAGE_SIZE - 2 * sizeof(unsigned), sizeof(unsigned));
+        memcpy(&freeSpace, page + PAGE_SIZE - 1 * sizeof(unsigned), sizeof(unsigned));
+
+        // delete record
+        unsigned directoryEnd = PAGE_SIZE - 2 * sizeof(unsigned) - numberOfSlots * 2 * sizeof(unsigned);
+
+        // if recordSize <= length, replace record then compact space,
+        if (recordSize <= length) {
+            memcpy(page + offset, record, recordSize);
+            memmove(page + offset + recordSize, page + offset + length, directoryEnd - (offset + recordSize));
+            // adjust directory
+            unsigned updatedRecordOffset = offset;
+            unsigned lengthDiff = length - recordSize; // how much the new record and old record differ by length
+            char* dirPtr = page + directoryEnd;
+            for (int i = 0; i < numberOfSlots; i++) {
+                unsigned slotOffset;
+                memcpy(&slotOffset, dirPtr + i * (sizeof(unsigned) * 2), sizeof(unsigned));
+                if (slotOffset > updatedRecordOffset) {
+                    slotOffset -= lengthDiff;
+                    memcpy(dirPtr + i * (sizeof(unsigned) * 2), &slotOffset, sizeof(unsigned));
+                }
+            }
+        }
+        else {
+            deleteRecord(fileHandle, recordDescriptor, rid);
+            memcpy(&freeSpace, page + PAGE_SIZE - 1 * sizeof(unsigned), sizeof(unsigned));
+            if (freeSpace >= recordSize) {
+
+            }
+        }
+
+        length = recordSize;
+
+
+
+
+
+
+
+
         return -1;
     }
 
@@ -352,6 +395,31 @@ namespace PeterDB {
             // No need for an else branch as NULL fields have no representation in the data stream
         }
         return recordStream;
+    }
+
+    unsigned RecordBasedFileManager::getRecordSize(const void *data, const std::vector<Attribute> &recordDescriptor, std::vector<bool> isNull) {
+        unsigned nullIndicatorSize = ceil(static_cast<double>(recordDescriptor.size()) / 8.0);
+        unsigned recordSize = 0;
+        recordSize += nullIndicatorSize;
+        char* dataPtr = (char*)data + nullIndicatorSize; // skip past null fields
+
+        for (int i = 0; i < recordDescriptor.size(); ++i) {
+            if (!isNull[i]) {
+                if (recordDescriptor[i].type == TypeVarChar) {
+                    int varcharLength = 0;
+                    memcpy(&varcharLength, dataPtr, sizeof(int));
+                    recordSize += sizeof(int) + varcharLength;
+                    dataPtr += sizeof(int) + varcharLength;
+                } else if (recordDescriptor[i].type == TypeInt) {
+                    recordSize += sizeof(int);
+                    dataPtr += sizeof(int);
+                } else if (recordDescriptor[i].type == TypeReal) {
+                    recordSize += sizeof(float);
+                    dataPtr += sizeof(float);
+                }
+            }
+        }
+        return recordSize;
     }
 
 
