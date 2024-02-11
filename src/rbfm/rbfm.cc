@@ -4,7 +4,7 @@
 #include <cstring>
 #include <cmath>
 #include <iostream>
-
+#include <sstream>
 
 namespace PeterDB {
     RecordBasedFileManager &RecordBasedFileManager::instance() {
@@ -90,6 +90,7 @@ namespace PeterDB {
                 memcpy(page + directory + 3 * sizeof(unsigned), &freeSpace, sizeof(unsigned));
                 fileHandle.appendPage(page);
                 inserted = true;
+                pageNum++;
             }
             else {
                 fileHandle.readPage(pageNum, page);
@@ -114,7 +115,7 @@ namespace PeterDB {
                 } else {
                     //if no enough space in last page, check first page
                     if (pageNum == (fileHandle.getNumberOfPages() - 1) && !read) {
-                        pageNum = -1;
+                        pageNum = 0; // start from first page
                         read = true;
                     } //no space in all pages, append a new page
                     else if ((pageNum == fileHandle.getNumberOfPages()) && read) {
@@ -131,10 +132,19 @@ namespace PeterDB {
                         fileHandle.appendPage(page);
                         inserted = true;
                     }
+                    else {
+                        pageNum++;
+                    }
                 }
             }
-            pageNum++;
         }
+//        std::ostringstream stream1;
+//        std::ostringstream stream2;
+//        printRecord(recordDescriptor, data, stream1);
+//        std::cout << "got:\n " << stream1.str() << std::endl;
+//        printRecord(recordDescriptor, record, stream2);
+//        std::cout << "inserted:\n " << stream2.str() << std::endl;
+
         rid.slotNum = numberOfSlots;
         rid.pageNum = pageNum;
 //        printf("inserted in page %d\n", pageNum);
@@ -145,7 +155,6 @@ namespace PeterDB {
 
     RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                           const RID &rid, void *data) {
-//        printf("Reading record from page %d\n", rid.pageNum);
         char* page = new char[PAGE_SIZE];
         fileHandle.readPage(rid.pageNum, page);
         unsigned offset, length;

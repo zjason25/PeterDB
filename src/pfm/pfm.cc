@@ -71,15 +71,15 @@ namespace PeterDB {
     FileHandle::~FileHandle() = default;
 
     RC FileHandle::readPage(PageNum pageNum, void *data) {
-        PageNum totalPages = getNumberOfPages();
-        if (pageNum <= totalPages) {
-            PageNum page = pageNum * PAGE_SIZE + PAGE_SIZE; // + PAGE_SIZE to skip first page
-            fseek(openedFile, (long)(page * sizeof(char)), SEEK_SET);
-            fread(data, sizeof(char), PAGE_SIZE, openedFile);
+        if (pageNum < getNumberOfPages()) {
+            fseek(openedFile, (pageNum + 1) * PAGE_SIZE, SEEK_SET);
+            size_t result = fread(data, sizeof(char), PAGE_SIZE, openedFile);
+            if (result == PAGE_SIZE) {
             //update readPageCounter
             readPageCounter = getReadPageCnt() + 1;
             setReadPageCnt(readPageCounter);
             return 0;
+            }
         }
         // page does not exist
         return -1;
@@ -88,15 +88,16 @@ namespace PeterDB {
     RC FileHandle::writePage(PageNum pageNum, const void *data) {
         PageNum totalPages = getNumberOfPages();
         if (totalPages == 0) {appendPage(data);}
-        else if (pageNum <= totalPages) {
-            unsigned offset = pageNum * PAGE_SIZE + PAGE_SIZE; // + PAGE_SIZE to skip first page
-            fseek(openedFile,  (long)(offset * sizeof(char)), SEEK_SET);
-            fwrite(data, sizeof(char), PAGE_SIZE, openedFile);
+        else if (pageNum < totalPages) {
+            fseek(openedFile, (pageNum + 1) * PAGE_SIZE, SEEK_SET);
+            size_t result = fwrite(data, sizeof(char), PAGE_SIZE, openedFile);
             fflush(openedFile);
-            //update writePageCounter
-            writePageCounter = getWritePageCnt() + 1;
-            setWritePageCnt(writePageCounter);
-            return 0;
+            if (result == PAGE_SIZE) {
+                //update writePageCounter
+                writePageCounter = getWritePageCnt() + 1;
+                setWritePageCnt(writePageCounter);
+                return 0;
+            }
         }
         // page does not exist
         return -1;
