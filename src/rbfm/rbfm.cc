@@ -5,6 +5,8 @@
 #include <cmath>
 #include <iostream>
 #include <sstream>
+#include <algorithm>
+#include <iterator>
 
 namespace PeterDB {
     RecordBasedFileManager &RecordBasedFileManager::instance() {
@@ -429,38 +431,297 @@ namespace PeterDB {
         return -1;
     }
 
+    RC RBFM_ScanIterator::initializeScan(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
+                                   const std::string &conditionAttribute, const CompOp compOp, const void *value,
+                                   const std::vector<std::string> &attributeNames) {
+
+        this->rbfm = &RecordBasedFileManager::instance();
+        this->fileHandle = fileHandle;
+        this->recordDescriptor = recordDescriptor;
+        this->conditionAttribute = conditionAttribute;
+        this->compOp = compOp;
+        this->value = value;
+        this->page = new char[PAGE_SIZE];
+        this->pageNum = 0;
+        this->slotNum = 0; // slotNum start from 1
+        this->attributeNames = attributeNames;
+        this->numberOfPages = 0;
+        this->numberOfSlots = 0;
+
+        // read the first page
+        this->numberOfPages = fileHandle.getNumberOfPages();
+        if (numberOfPages > 0) {
+            if (fileHandle.readPage(0, page)) {
+                return -1;
+            }
+        }
+        // Get number of slots on first page
+        this->numberOfSlots = rbfm->getTotalSlots(page);
+
+        return 0;
+    }
     RC RecordBasedFileManager::scan(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                     const std::string &conditionAttribute, const CompOp compOp, const void *value,
                                     const std::vector<std::string> &attributeNames,
-                                    RBFM_ScanIterator &rbfm_ScanIterator) {
-        // scan every pages
-        for (int i = 0; i < fileHandle.getNumberOfPages(); i++) {
-            char * page = new char[PAGE_SIZE];
-            fileHandle.readPage(i, page);
-            unsigned numberOfSlots;
-            memcpy(&numberOfSlots, page + PAGE_SIZE - 2 * sizeof(unsigned), sizeof(unsigned));
-            for (int j = 1; j <= numberOfSlots; j++) {
-                unsigned offset, length;
-                memcpy(&offset, page + (PAGE_SIZE - 2 * sizeof(unsigned) - j * 2 * sizeof(unsigned)), sizeof(unsigned));
-                memcpy(&length, page + (PAGE_SIZE - 2 * sizeof(unsigned) - j * 2 * sizeof(unsigned) + sizeof(unsigned)), sizeof(unsigned));
-
-//                // TODO: how to scan tombstone
-//                if (length >= TOMBSTONE_MARKER) {
-//                    ;
-//                }
-//                // if a record was deleted, slot will have 0
-//                if (length == 0) {
-//                    return -1;
-//                }
-                char* record = new char[length];
-                memcpy(record, page + offset, length);
-                std::vector<bool> isNull = extractNullInformation((void*)record, recordDescriptor);
-            }
-
-        }
-        return -1;
+                                    RBFM_ScanIterator &rbfm_ScanIterator){
+        return rbfm_ScanIterator.initializeScan(fileHandle,recordDescriptor,conditionAttribute,compOp,value,attributeNames);
     }
-//    RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) { return RBFM_EOF; };
+
+    RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
+        if (getNextSlot() == -1) {return RBFM_EOF;}
+
+        // Not returning any result
+        if (attributeNames.empty()) {
+            rid.pageNum = pageNum;
+            rid.slotNum = slotNum;
+            return 0;
+        }
+
+        char* record = new char[PAGE_SIZE];
+        rbfm->readNextRecord(fileHandle, rid, page, record);
+
+
+        // Two passes over record
+        // 1. Check for conditionAttribute
+        if (!conditionAttribute.empty()) {
+            bool condition = checkCondition(record, recordDescriptor);
+            // no matching record
+            if (!condition) {
+                rid.pageNum = pageNum;
+                rid.slotNum = slotNum;
+                return 0;
+            }
+        }
+        // 2. Extract Attribute in attributeNames
+        char* dataPtr = (char*) data;
+        char* recordPtr = record;
+
+        std::vector<int> attributeIndexes;
+        for (const auto& attrName : attributeNames) {
+            auto it = std::find_if(recordDescriptor.begin(), recordDescriptor.end(),
+                                   [&attrName](const Attribute& attr) {return attr.name == attrName;});
+            if (it != recordDescriptor.end()) {
+                int index = std::distance(recordDescriptor.begin(), it);
+                attributeIndexes.push_back(index);
+            }
+        }
+
+        unsigned nullIndicatorSize = ceil(static_cast<double>(recordDescriptor.size()) / 8.0);
+        std::vector<bool> nullBits;
+        char* recordNullIndicator = record; // Assuming 'record' points to the start of the record data
+
+        for (int index : attributeIndexes) {
+            int byteIndex = index / 8;
+            int bitIndex = index % 8;
+            bool isNull = recordNullIndicator[byteIndex] & (1 << (7 - bitIndex));
+            nullBits.push_back(isNull);
+        }
+
+        unsigned newNullIndicatorSize = ceil(static_cast<double>(attributeIndexes.size()) / 8.0);
+        std::vector<unsigned char> newNullIndicator(newNullIndicatorSize, 0);
+        for (int i = 0; i < nullBits.size(); ++i) {
+            if (nullBits[i]) {
+                newNullIndicator[i / 8] |= (1 << (7 - (i % 8)));
+            }
+        }
+        memcpy(dataPtr, newNullIndicator.data(), newNullIndicatorSize);
+        dataPtr += newNullIndicatorSize;
+        record += nullIndicatorSize;
+
+
+
+
+
+
+        return 0;
+    };
+    RC RBFM_ScanIterator::close() {return -1;}
+
+    RC RBFM_ScanIterator::getNextSlot() {
+        if (slotNum > numberOfSlots) {
+            if (pageNum == numberOfPages) {
+                return RBFM_EOF;
+            }
+            pageNum++;
+            slotNum = 1;
+            fileHandle.readPage(pageNum, page);
+            numberOfSlots = rbfm->getTotalSlots(page);
+            return 0;
+        }
+        slotNum++;
+        return 0;
+    };
+
+    bool RBFM_ScanIterator::compareInt(int &num, const void *newValue, CompOp compareOp) {
+        if (compOp == NO_OP) {
+            return true;
+        }
+
+        int val;
+        memcpy(&val, newValue, sizeof(int));
+        switch (compareOp) {
+            case EQ_OP: return num == val;
+            case LT_OP: return num < val;
+            case LE_OP: return num <= val;
+            case GT_OP: return num > val;
+            case GE_OP: return num >= val;
+            case NE_OP: return num != val;
+            case NO_OP: return true;
+        }
+        return false;
+    }
+    bool RBFM_ScanIterator::compareReal(float &real, const void *newValue, CompOp compareOp) {
+        if (compOp == NO_OP) {
+            return true;
+        }
+
+        float val;
+        memcpy(&val, newValue, sizeof(float));
+        switch (compareOp) {
+            case EQ_OP: return real == val;
+            case LT_OP: return real < val;
+            case LE_OP: return real <= val;
+            case GT_OP: return real > val;
+            case GE_OP: return real >= val;
+            case NE_OP: return real != val;
+            case NO_OP: return true;
+        }
+        return false;
+    }
+    bool RBFM_ScanIterator::compareVarchar(char* str, const void *newValue, CompOp compareOp) {
+        if (compOp == NO_OP) {
+            return true;
+        }
+
+        int length;
+        memcpy(&length, (char*)newValue, sizeof(int));
+        char* valStr = new char[length + 1];
+        memcpy(valStr, newValue, length);
+        valStr[length + 1] = '\0';
+
+        int result = strcmp(str, valStr);
+
+        switch (compareOp) {
+            case EQ_OP: return result == 0;
+            case LT_OP: return result < 0;
+            case LE_OP: return result <= 0;
+            case GT_OP: return result > 0;
+            case GE_OP: return result >= 0;
+            case NE_OP: return result != 0;
+            case NO_OP: return true;
+        }
+        return false;
+    }
+
+    bool RBFM_ScanIterator::checkCondition(void* data, std::vector<Attribute> &recordDescriptor) {
+        std::vector<bool> isNull = rbfm->extractNullInformation((char*)data, recordDescriptor);
+        unsigned nullIndicatorSize = ceil(static_cast<double>(recordDescriptor.size()) / 8.0);
+        char* dataPtr = (char*) data + nullIndicatorSize; // Skip Null for now
+        unsigned fieldSize = 0;
+        bool condition = false;
+
+        for (int i = 0; i < recordDescriptor.size(); i++) {
+            if (!isNull[i]) {
+                if (recordDescriptor[i].name == conditionAttribute) {
+                    if (recordDescriptor[i].type == TypeInt) {
+                        int num;
+                        memcpy(&num, dataPtr, sizeof(int));
+                        return compareInt(num, value, compOp);
+                    }
+                    else if (recordDescriptor[i].type == TypeReal) {
+                        float real;
+                        memcpy(&real, dataPtr, sizeof(float));
+                        return compareReal(real, value, compOp);
+                    }
+                    else if (recordDescriptor[i].type == TypeVarChar) {
+                        int length;
+                        memcpy(&length, (char*)dataPtr, sizeof(int));
+                        dataPtr += sizeof(int);
+                        char* str = new char[length + 1];
+                        str[length + 1] = '\0';
+                        return compareVarchar(str, value, compOp);
+                    }
+                }
+                else {
+                    if (recordDescriptor[i].type == TypeVarChar) {
+                        int varcharLength = 0;
+                        memcpy(&varcharLength, dataPtr, sizeof(int));
+                        fieldSize = sizeof(int) + varcharLength;
+                    } else {
+                        fieldSize = sizeof(int);
+                    }
+                }
+                dataPtr += fieldSize;
+            }
+        }
+        return condition;
+    }
+    void RBFM_ScanIterator::extractAttributesAndNullBits(const std::vector<Attribute> &recordDescriptor,
+            const std::vector<std::string> &attributeNames, const char *record, void *data) {
+        std::vector<bool> nullBits;
+        std::vector<int> attributeIndexes;
+        unsigned newNullIndicatorSize = ceil(static_cast<double>(attributeNames.size()) / 8.0);
+        std::vector<unsigned char> newNullIndicator(newNullIndicatorSize, 0);
+
+        // Temporary buffer to store extracted attributes before knowing the exact output size
+        std::vector<char> tempBuffer;
+
+        // Calculate the size of the original null indicator
+        size_t nullIndicatorSize = ceil(static_cast<double>(recordDescriptor.size()) / 8.0);
+        const char* currentPtr = record + nullIndicatorSize; // Start reading attributes after the null indicator
+
+        for (int i = 0; i < recordDescriptor.size(); ++i) {
+            bool isTargetAttribute = std::find(attributeNames.begin(), attributeNames.end(), recordDescriptor[i].name) != attributeNames.end();
+            int byteIndex = i / 8;
+            int bitIndex = i % 8;
+            bool isNull = record[byteIndex] & (1 << (7 - bitIndex));
+
+            if (isTargetAttribute) {
+                size_t indexInTarget = std::distance(attributeNames.begin(), std::find(attributeNames.begin(), attributeNames.end(), recordDescriptor[i].name));
+                if (!isNull) {
+                    // Extract attribute value
+                    switch (recordDescriptor[i].type) {
+                        case TypeInt:
+                        case TypeReal: {
+                            tempBuffer.insert(tempBuffer.end(), currentPtr, currentPtr + 4);
+                            currentPtr += 4;
+                            break;
+                        }
+                        case TypeVarChar: {
+                            int length;
+                            std::memcpy(&length, currentPtr, sizeof(int));
+                            tempBuffer.insert(tempBuffer.end(), currentPtr, currentPtr + 4 + length);
+                            currentPtr += 4 + length;
+                            break;
+                        }
+                    }
+                }
+                // Set null bit in new null indicator
+                if (isNull) {
+                    newNullIndicator[indexInTarget / 8] |= (1 << (7 - (indexInTarget % 8)));
+                }
+            } else {
+                // Skip this attribute
+                if (!isNull) {
+                    switch (recordDescriptor[i].type) {
+                        case TypeInt:
+                        case TypeReal:
+                            currentPtr += 4;
+                            break;
+                        case TypeVarChar:
+                            int length;
+                            std::memcpy(&length, currentPtr, sizeof(int));
+                            currentPtr += 4 + length;
+                            break;
+                    }
+                }
+            }
+        }
+        // Copy the temporary buffer and new null indicator to the output
+        std::memcpy(data, newNullIndicator.data(), newNullIndicatorSize);
+        std::memcpy((char*)data + newNullIndicatorSize, tempBuffer.data(), tempBuffer.size());
+    }
+
 
     std::vector<bool> RecordBasedFileManager::extractNullInformation(const void *data, const std::vector<Attribute> &recordDescriptor) {
         unsigned numFields = recordDescriptor.size();
@@ -539,6 +800,40 @@ namespace PeterDB {
         return recordSize;
     }
 
+    unsigned RecordBasedFileManager::getTotalSlots(void *page) {
+        unsigned numSlots;
+        memcpy(&numSlots, (char*)page + PAGE_SIZE - 2 * sizeof(unsigned), sizeof(unsigned));
+        return numSlots;
+    }
 
+    // given an rid, read the next record from *data into *record
+    RC RecordBasedFileManager::readNextRecord(FileHandle fileHandle, RID rid, void *data, void *record) {
+        char* page = (char*) data;
+        unsigned offset, length;
+        memcpy(&offset, page + (PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned)),
+               sizeof(unsigned));
+        memcpy(&length,
+               page + (PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned) + sizeof(unsigned)),
+               sizeof(unsigned));
+        // read from a tombstone
+        if (length >= TOMBSTONE_MARKER) {
+            unsigned pageNum_t = offset - TOMBSTONE_MARKER;
+            unsigned slotNum_t = length - TOMBSTONE_MARKER;
+            RID rid_t;
+            rid_t.pageNum = pageNum_t;
+            rid_t.slotNum = slotNum_t;
+            char *temp_page = new char[PAGE_SIZE];
+            fileHandle.readPage(pageNum_t, temp_page);
+            readNextRecord(fileHandle, rid_t, temp_page, record);
+            delete[] temp_page;
+            return 0;
+        }
+        // reading an empty slot
+        if (length == 0) {
+            return -1;
+        }
+        memcpy(record, page + offset, length);
+        return 0;
+    }
 } // namespace PeterDB
 

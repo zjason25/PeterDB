@@ -54,6 +54,8 @@ namespace PeterDB {
     //  }
     //  rbfmScanIterator.close();
 
+    class RecordBasedFileManager;
+
     class RBFM_ScanIterator {
     public:
         RBFM_ScanIterator() = default;;
@@ -61,8 +63,37 @@ namespace PeterDB {
         // Never keep the results in the memory. When getNextRecord() is called,
         // a satisfying record needs to be fetched from the file.
         // "data" follows the same format as RecordBasedFileManager::insertRecord().
-        RC getNextRecord(RID &rid, void *data) { return RBFM_EOF; };
-        RC close() { return -1; };
+        RC initializeScan(FileHandle &fileHandle,
+                            const std::vector<Attribute> &recordDescriptor,
+                            const std::string &conditionAttribute,
+                            const CompOp compOp,
+                            const void *value,
+                            const std::vector<std::string> &attributeNames);
+        RC getNextRecord(RID &rid, void *data);
+        RC close();
+
+    private:
+        RecordBasedFileManager *rbfm;
+        FileHandle &fileHandle;
+        std::vector<Attribute> recordDescriptor;
+        std::string &conditionAttribute;
+        CompOp compOp;
+        const void *value;
+        char* page;
+        std::vector<std::string> &attributeNames;
+        RBFM_ScanIterator &rbfm_ScanIterator;
+
+        unsigned pageNum, numberOfPages;
+        unsigned slotNum, numberOfSlots;
+        RC getNextSlot();
+        bool compareInt(int &num, const void *newValue, CompOp compareOp);
+        bool compareReal(float &real, const void *newValue, CompOp compareOp);
+        bool compareVarchar(char* str, const void *newValue, CompOp compareOp);
+        bool checkCondition(void* data, std::vector<Attribute> &recordDescriptor);
+        void extractAttributesAndNullBits(const std::vector<Attribute> &recordDescriptor,
+                                          const std::vector<std::string> &attributeNames,
+                                          const char* record, void* data);
+
     };
 
     class RecordBasedFileManager {
@@ -129,9 +160,12 @@ namespace PeterDB {
                 const std::vector<std::string> &attributeNames, // a list of projected attributes
                 RBFM_ScanIterator &rbfm_ScanIterator);
 
+        RC readNextRecord(FileHandle fileHandle, RID rid, void *data, void *record);
         std::vector<bool> extractNullInformation(const void *data, const std::vector<Attribute> &recordDescriptor);
         void *createRecordStream(const void *data, const std::vector<Attribute> &recordDescriptor, const std::vector<bool> &isNull, unsigned &recordSize);
         unsigned getRecordSize(const void *data, const std::vector<Attribute> &recordDescriptor, std::vector<bool> isNull);
+        unsigned getTotalSlots(void *data);
+
 
     protected:
         RecordBasedFileManager();                                                   // Prevent construction

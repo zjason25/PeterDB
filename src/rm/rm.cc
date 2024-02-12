@@ -15,7 +15,16 @@ namespace PeterDB {
     RelationManager &RelationManager::operator=(const RelationManager &) = default;
 
     RC RelationManager::createCatalog() {
-        return -1;
+        RecordBasedFileManager &rbfm = RecordBasedFileManager::instance();
+        // Create both tables and columns tables, return error if either fails
+
+        if (rbfm.createFile("Tables"))
+            return -1;
+        if (rbfm.createFile("Columns"))
+            return -1;
+
+
+        return 0;
     }
 
     RC RelationManager::deleteCatalog() {
