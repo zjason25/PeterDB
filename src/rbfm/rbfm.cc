@@ -373,6 +373,59 @@ namespace PeterDB {
 
     RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                              const RID &rid, const std::string &attributeName, void *data) {
+        char* page = new char[PAGE_SIZE];
+        fileHandle.readPage(rid.pageNum, page);
+        unsigned offset, length;
+        memcpy(&offset, page + (PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned)), sizeof(unsigned));
+        memcpy(&length, page + (PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned) + sizeof(unsigned)), sizeof(unsigned));
+        // reading a tombstone attribute
+        if (length >= TOMBSTONE_MARKER) {
+            RID rid_t;
+            rid_t.pageNum = offset - TOMBSTONE_MARKER;
+            rid_t.slotNum = length - TOMBSTONE_MARKER;
+            readAttribute(fileHandle, recordDescriptor, rid_t, attributeName, data);
+            return 0;
+        }
+        if (length == 0) {
+            return -1;
+        }
+
+        char* recordPtr = page + offset;
+        std::vector<bool> isNull = extractNullInformation(recordPtr, recordDescriptor);
+        unsigned nullIndicatorSize = ceil(static_cast<double>(recordDescriptor.size()) / 8.0);
+
+        // Copy the null-indicator bytes
+        char *dataPtr = recordPtr + nullIndicatorSize;
+        unsigned fieldSize = 0;
+        for (int i = 0; i < recordDescriptor.size(); ++i) {
+            if (!isNull[i]) {
+                if (recordDescriptor[i].name == attributeName) {
+                    if (recordDescriptor[i].type == TypeVarChar) {
+                        int varcharLength = 0;
+                        memcpy(&varcharLength, dataPtr, sizeof(int));
+                        fieldSize = sizeof(int) + varcharLength;
+                    } else if (recordDescriptor[i].type == TypeInt) {
+                        fieldSize = sizeof(int);
+                    } else if (recordDescriptor[i].type == TypeReal) {
+                        fieldSize = sizeof(float);
+                    }
+                    memcpy(data, dataPtr, fieldSize);
+                    return 0;
+                }
+                else {
+                    if (recordDescriptor[i].type == TypeVarChar) {
+                        int varcharLength = 0;
+                        memcpy(&varcharLength, dataPtr, sizeof(int));
+                        fieldSize = sizeof(int) + varcharLength;
+                    } else if (recordDescriptor[i].type == TypeInt) {
+                        fieldSize = sizeof(int);
+                    } else if (recordDescriptor[i].type == TypeReal) {
+                        fieldSize = sizeof(float);
+                    }
+                }
+                dataPtr += fieldSize;
+            }
+        }
         return -1;
     }
 
@@ -380,8 +433,34 @@ namespace PeterDB {
                                     const std::string &conditionAttribute, const CompOp compOp, const void *value,
                                     const std::vector<std::string> &attributeNames,
                                     RBFM_ScanIterator &rbfm_ScanIterator) {
+        // scan every pages
+        for (int i = 0; i < fileHandle.getNumberOfPages(); i++) {
+            char * page = new char[PAGE_SIZE];
+            fileHandle.readPage(i, page);
+            unsigned numberOfSlots;
+            memcpy(&numberOfSlots, page + PAGE_SIZE - 2 * sizeof(unsigned), sizeof(unsigned));
+            for (int j = 1; j <= numberOfSlots; j++) {
+                unsigned offset, length;
+                memcpy(&offset, page + (PAGE_SIZE - 2 * sizeof(unsigned) - j * 2 * sizeof(unsigned)), sizeof(unsigned));
+                memcpy(&length, page + (PAGE_SIZE - 2 * sizeof(unsigned) - j * 2 * sizeof(unsigned) + sizeof(unsigned)), sizeof(unsigned));
+
+//                // TODO: how to scan tombstone
+//                if (length >= TOMBSTONE_MARKER) {
+//                    ;
+//                }
+//                // if a record was deleted, slot will have 0
+//                if (length == 0) {
+//                    return -1;
+//                }
+                char* record = new char[length];
+                memcpy(record, page + offset, length);
+                std::vector<bool> isNull = extractNullInformation((void*)record, recordDescriptor);
+            }
+
+        }
         return -1;
     }
+//    RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) { return RBFM_EOF; };
 
     std::vector<bool> RecordBasedFileManager::extractNullInformation(const void *data, const std::vector<Attribute> &recordDescriptor) {
         unsigned numFields = recordDescriptor.size();
