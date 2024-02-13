@@ -16,10 +16,11 @@ namespace PeterDB {
 
         ~RM_ScanIterator();
 
-        // "data" follows the same format as RelationManager::insertTuple()
-        RC getNextTuple(RID &rid, void *data);
+        RBFM_ScanIterator rbfm_ScanIterator;
 
-        RC close();
+        // "data" follows the same format as RelationManager::insertTuple()
+        RC getNextTuple(RID &rid, void *data) {return rbfm_ScanIterator.getNextRecord(rid,data);};
+        RC close() {return rbfm_ScanIterator.close();};
     };
 
     // RM_IndexScanIterator is an iterator to go through index entries
@@ -71,6 +72,20 @@ namespace PeterDB {
                 const std::vector<std::string> &attributeNames, // a list of projected attributes
                 RM_ScanIterator &rm_ScanIterator);
 
+        RC createTablesRecordDescriptor(std::vector<PeterDB::Attribute> &recordDescriptor);
+        RC createColumnsRecordDescriptor(std::vector<PeterDB::Attribute> &recordDescriptor);
+        void prepareTablesRecord(const std::string &tableName, const std::vector<Attribute> &attrs, void *data);
+        void prepareColumnsRecord();
+        int getActualByteForNullsIndicator(int fieldCount);
+        unsigned char *initializeNullFieldsIndicator(const std::vector<PeterDB::Attribute> &recordDescriptor);
+        unsigned getNextTableID(unsigned &table_id);
+
+
+
+
+
+
+
         // Extra credit work (10 points)
         RC addAttribute(const std::string &tableName, const Attribute &attr);
 
@@ -89,6 +104,11 @@ namespace PeterDB {
                      bool lowKeyInclusive,
                      bool highKeyInclusive,
                      RM_IndexScanIterator &rm_IndexScanIterator);
+
+    private:
+        const std::vector<Attribute> tableDescriptor;
+        const std::vector<Attribute> columnDescriptor;
+
 
     protected:
         RelationManager();                                                  // Prevent construction

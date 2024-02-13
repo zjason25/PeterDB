@@ -493,49 +493,13 @@ namespace PeterDB {
             }
         }
         // 2. Extract Attribute in attributeNames
-        char* dataPtr = (char*) data;
-        char* recordPtr = record;
-
-        std::vector<int> attributeIndexes;
-        for (const auto& attrName : attributeNames) {
-            auto it = std::find_if(recordDescriptor.begin(), recordDescriptor.end(),
-                                   [&attrName](const Attribute& attr) {return attr.name == attrName;});
-            if (it != recordDescriptor.end()) {
-                int index = std::distance(recordDescriptor.begin(), it);
-                attributeIndexes.push_back(index);
-            }
-        }
-
-        unsigned nullIndicatorSize = ceil(static_cast<double>(recordDescriptor.size()) / 8.0);
-        std::vector<bool> nullBits;
-        char* recordNullIndicator = record; // Assuming 'record' points to the start of the record data
-
-        for (int index : attributeIndexes) {
-            int byteIndex = index / 8;
-            int bitIndex = index % 8;
-            bool isNull = recordNullIndicator[byteIndex] & (1 << (7 - bitIndex));
-            nullBits.push_back(isNull);
-        }
-
-        unsigned newNullIndicatorSize = ceil(static_cast<double>(attributeIndexes.size()) / 8.0);
-        std::vector<unsigned char> newNullIndicator(newNullIndicatorSize, 0);
-        for (int i = 0; i < nullBits.size(); ++i) {
-            if (nullBits[i]) {
-                newNullIndicator[i / 8] |= (1 << (7 - (i % 8)));
-            }
-        }
-        memcpy(dataPtr, newNullIndicator.data(), newNullIndicatorSize);
-        dataPtr += newNullIndicatorSize;
-        record += nullIndicatorSize;
-
-
-
-
-
-
+        extractAttributesAndNullBits(recordDescriptor, attributeNames, record, data);
         return 0;
     };
-    RC RBFM_ScanIterator::close() {return -1;}
+    RC RBFM_ScanIterator::close() {
+        free(page);
+        return 0;
+    }
 
     RC RBFM_ScanIterator::getNextSlot() {
         if (slotNum > numberOfSlots) {
