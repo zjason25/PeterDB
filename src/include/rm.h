@@ -8,6 +8,8 @@
 
 namespace PeterDB {
 #define RM_EOF (-1)  // end of a scan operator
+#define TABLES_RECORD_SIZE (1 + 4 * sizeof(unsigned) + 2 * 50)
+#define COLUMNS_RECORD_SIZE (1 + 6 * sizeof(unsigned) + 50)
 
     // RM_ScanIterator is an iterator to go through tuples
     class RM_ScanIterator {
@@ -16,14 +18,14 @@ namespace PeterDB {
 
         ~RM_ScanIterator();
 
-        RBFM_ScanIterator rbfm_ScanIterator;
-
         // "data" follows the same format as RelationManager::insertTuple()
-        RC getNextTuple(RID &rid, void *data) {return rbfm_ScanIterator.getNextRecord(rid,data);};
-        RC close() {return rbfm_ScanIterator.close();};
+        RC getNextTuple(RID &rid, void *data);
+        RC close();
+        RBFM_ScanIterator rbfm_iter;
+        FileHandle fileHandle;
     };
 
-    // RM_IndexScanIterator is an iterator to go through index entries
+//     RM_IndexScanIterator is an iterator to go through index entries
     class RM_IndexScanIterator {
     public:
         RM_IndexScanIterator();    // Constructor
@@ -74,13 +76,14 @@ namespace PeterDB {
 
         RC createTablesRecordDescriptor(std::vector<PeterDB::Attribute> &recordDescriptor);
         RC createColumnsRecordDescriptor(std::vector<PeterDB::Attribute> &recordDescriptor);
-        void prepareTablesRecord(const std::string &tableName, const std::vector<Attribute> &attrs, void *data);
-        void prepareColumnsRecord();
-        int getActualByteForNullsIndicator(int fieldCount);
-        unsigned char *initializeNullFieldsIndicator(const std::vector<PeterDB::Attribute> &recordDescriptor);
-        unsigned getNextTableID(unsigned &table_id);
-
-
+        void prepareTablesRecord(const std::string &tableName, unsigned &tableId, bool isSystem, void *data);
+        void prepareColumnsRecord(unsigned &tableID, const Attribute &attr, unsigned &position, void *data, bool isSystem);
+        char *initNullIndicator(const std::vector<Attribute> &recordDescriptor);
+        RC getNextTablesID(unsigned &table_id);
+        RC getTableID(const std::string &table_name, unsigned &table_id);
+        RC parseInt(unsigned &table_id, const void* data);
+        RC insertTable(const std::string &table_name, unsigned table_id, bool isSystem);
+        RC insertColumns(unsigned table_id, const std::vector<Attribute> &recordDescriptor);
 
 
 
@@ -106,8 +109,8 @@ namespace PeterDB {
                      RM_IndexScanIterator &rm_IndexScanIterator);
 
     private:
-        const std::vector<Attribute> tableDescriptor;
-        const std::vector<Attribute> columnDescriptor;
+        std::vector<Attribute> tableDescriptor;
+        std::vector<Attribute> columnDescriptor;
 
 
     protected:

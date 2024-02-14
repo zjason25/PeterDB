@@ -74,14 +74,14 @@ namespace PeterDB {
 
     private:
         RecordBasedFileManager *rbfm;
-        FileHandle &fileHandle;
+        FileHandle fileHandle;
         std::vector<Attribute> recordDescriptor;
-        std::string &conditionAttribute;
+        std::string conditionAttribute;
         CompOp compOp;
         const void *value;
         char* page;
-        std::vector<std::string> &attributeNames;
-        RBFM_ScanIterator &rbfm_ScanIterator;
+        std::vector<std::string> attributeNames;
+        RBFM_ScanIterator *rbfm_ScanIterator;
 
         unsigned pageNum, numberOfPages;
         unsigned slotNum, numberOfSlots;

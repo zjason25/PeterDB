@@ -477,6 +477,8 @@ namespace PeterDB {
             return 0;
         }
 
+        rid.pageNum = pageNum;
+        rid.slotNum = slotNum;
         char* record = new char[PAGE_SIZE];
         rbfm->readNextRecord(fileHandle, rid, page, record);
 
@@ -771,9 +773,11 @@ namespace PeterDB {
     }
 
     // given an rid, read the next record from *data into *record
+    // TODO: BUGS IN OFFSET: rid is empty
     RC RecordBasedFileManager::readNextRecord(FileHandle fileHandle, RID rid, void *data, void *record) {
         char* page = (char*) data;
         unsigned offset, length;
+
         memcpy(&offset, page + (PAGE_SIZE - 2 * sizeof(unsigned) - rid.slotNum * 2 * sizeof(unsigned)),
                sizeof(unsigned));
         memcpy(&length,
