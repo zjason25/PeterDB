@@ -773,7 +773,6 @@ namespace PeterDB {
     }
 
     // given an rid, read the next record from *data into *record
-    // TODO: BUGS IN OFFSET: rid is empty
     RC RecordBasedFileManager::readNextRecord(FileHandle fileHandle, RID rid, void *data, void *record) {
         char* page = (char*) data;
         unsigned offset, length;

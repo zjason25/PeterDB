@@ -106,14 +106,95 @@ namespace PeterDB {
         RecordBasedFileManager &rbfm = RecordBasedFileManager::instance();
         FileHandle fileHandle;
         RID rid;
-        unsigned id;
-        getNextTablesID(id);
 
-        return -1;
+        // Get tableID
+        unsigned tableID;
+        if (getNextTablesID(tableID)) {
+            return -1;
+        }
+
+        if (rbfm.createFile(tableName)) {
+            return -1;
+        }
+
+
+        // Insert table into Tables
+        if (insertTable(tableName, tableID, false)){
+            return -1;
+        }
+
+        // Insert the table's columns into Columns
+        if (insertColumns(tableID, attrs)) {
+            return -1;
+        }
+        return 0;
     }
 
     RC RelationManager::deleteTable(const std::string &tableName) {
-        return -1;
+        RecordBasedFileManager &rbfm = RecordBasedFileManager::instance();
+        RC rc;
+
+        bool isSystem;
+        if (isSystemTable(isSystem, tableName))
+            return -1;
+
+        if (isSystem)
+            return -1;
+
+        // Delete the rbfm file holding this table's entries
+        if (rbfm.destroyFile(tableName)) {
+            return -1;
+        }
+
+        // get tableID
+        unsigned tableId;
+        if (getTableID(tableName, tableId)) {
+            return -1;
+        }
+
+        // Open tables file
+        FileHandle fileHandle;
+        if (rbfm.openFile("Tables", fileHandle)) {
+            return -1;
+        }
+
+        // Find entry with same table ID
+        // Use empty projection because we only care about RID
+        RBFM_ScanIterator rbfm_si;
+        std::vector<std::string> attrs;
+        void *value = &tableId;
+
+        rbfm.scan(fileHandle, tableDescriptor, "table-id", EQ_OP, value, attrs, rbfm_si);
+
+        RID rid;
+        rbfm_si.getNextRecord(rid, nullptr);
+
+        // Delete RID from table and close file
+        if (rbfm.deleteRecord(fileHandle, tableDescriptor, rid)) {
+            return -1;
+        }
+        rbfm.closeFile(fileHandle);
+        rbfm_si.close();
+
+        // Delete from Columns table
+        if (rbfm.openFile("Columns", fileHandle)) {
+            return -1;
+        }
+
+        // Find all entries whose table-id equal this table's ID
+        rbfm.scan(fileHandle, columnDescriptor, "table-id", EQ_OP, value, attrs, rbfm_si);
+
+        while (rbfm_si.getNextRecord(rid, nullptr) != RBFM_EOF) {
+            // Delete each result with the returned RID
+            if (rbfm.deleteRecord(fileHandle, columnDescriptor, rid)) {
+                return -1;
+            };
+
+        }
+        rbfm.closeFile(fileHandle);
+        rbfm_si.close();
+
+        return 0;
     }
 
     RC RelationManager::getAttributes(const std::string &tableName, std::vector<Attribute> &attrs) {
@@ -138,7 +219,6 @@ namespace PeterDB {
         // Scan through the Column table for all entries whose table-id equals tableName's table id.
         rbfm.scan(fileHandle, columnDescriptor, "table_id", EQ_OP, value, projection, rbfm_si);
 
-
         RID rid;
         char *data = new char[PAGE_SIZE];
         return 0;
@@ -150,12 +230,12 @@ namespace PeterDB {
         FileHandle fileHandle;
         std::vector<Attribute> recordDescriptor;
 
-//        bool isSystem;
-//        rc = isSystemTable(isSystem, tableName);
-//        if (rc)
-//            return rc;
-//        if (isSystem)
-//            return RM_CANNOT_MOD_SYS_TBL;
+        bool isSystem;
+        if (isSystemTable(isSystem, tableName))
+            return -1;
+
+        if (isSystem)
+            return -1;
 
         getAttributes(tableName, recordDescriptor);
         if (rbfm.openFile(tableName, fileHandle)) {
@@ -171,12 +251,12 @@ namespace PeterDB {
         RecordBasedFileManager &rbfm = RecordBasedFileManager::instance();
         RC rc;
 
-//        bool isSystem;
-//        rc = isSystemTable(isSystem, tableName);
-//        if (rc)
-//            return rc;
-//        if (isSystem)
-//            return -1;
+        bool isSystem;
+        if (isSystemTable(isSystem, tableName))
+            return -1;
+
+        if (isSystem)
+            return -1;
 
 
         std::vector<Attribute> recordDescriptor;
@@ -198,12 +278,12 @@ namespace PeterDB {
     RC RelationManager::updateTuple(const std::string &tableName, const void *data, const RID &rid) {
         RecordBasedFileManager &rbfm = RecordBasedFileManager::instance();
 
-//        bool isSystem;
-//        rc = isSystemTable(isSystem, tableName);
-//        if (rc)
-//            return rc;
-//        if (isSystem)
-//            return -1;
+        bool isSystem;
+        if (isSystemTable(isSystem, tableName))
+            return -1;
+
+        if (isSystem)
+            return -1;
 
         std::vector<Attribute> recordDescriptor;
         if (getAttributes(tableName, recordDescriptor)) {
@@ -444,7 +524,7 @@ namespace PeterDB {
             if (tid > max_table_id)
                 max_table_id = tid;
         }
-        free(data);
+        delete[] data;
         // Next table ID is 1 more than the largest table id
         table_id = max_table_id + 1;
         rbfm.closeFile(fileHandle);
@@ -477,6 +557,43 @@ namespace PeterDB {
         }
         delete[] value;
         delete[] data;
+        rbfm.closeFile(fileHandle);
+        rbfm_si.close();
+        return 0;
+    }
+
+    RC RelationManager::isSystemTable(bool &system, const std::string &tableName) {
+        RecordBasedFileManager &rbfm = RecordBasedFileManager::instance();
+        FileHandle fileHandle;
+
+        if (rbfm.openFile("Tables", fileHandle)) {
+            return -1;
+        }
+
+        // get sys column
+        std::vector<std::string> attrs{"sys"};
+
+        // Set up value to be tableName in API format (without null indicator)
+        char *value = new char[5 + 50];
+        unsigned name_len = tableName.length();
+        memcpy(value, &name_len, sizeof(unsigned));
+        memcpy((char*)value + sizeof(unsigned), tableName.c_str(), name_len);
+
+        // Find table whose table-name is equal to tableName
+        RBFM_ScanIterator rbfm_si;
+        rbfm.scan(fileHandle, tableDescriptor, "table-name", EQ_OP, value, attrs, rbfm_si);
+
+        RID rid;
+        char *data = new char[1 + sizeof(unsigned)];
+        if (rbfm_si.getNextRecord(rid, data) != RBFM_EOF) {
+            // Parse the system field from that table entry
+            unsigned sysByte;
+            parseInt(sysByte, data);
+            system = !sysByte;
+        }
+
+        delete[] data;
+        delete[] value;
         rbfm.closeFile(fileHandle);
         rbfm_si.close();
         return 0;

@@ -78,14 +78,12 @@ namespace PeterDB {
         RC createColumnsRecordDescriptor(std::vector<PeterDB::Attribute> &recordDescriptor);
         void prepareTablesRecord(const std::string &tableName, unsigned &tableId, bool isSystem, void *data);
         void prepareColumnsRecord(unsigned &tableID, const Attribute &attr, unsigned &position, void *data, bool isSystem);
-        char *initNullIndicator(const std::vector<Attribute> &recordDescriptor);
         RC getNextTablesID(unsigned &table_id);
         RC getTableID(const std::string &table_name, unsigned &table_id);
         RC parseInt(unsigned &table_id, const void* data);
         RC insertTable(const std::string &table_name, unsigned table_id, bool isSystem);
         RC insertColumns(unsigned table_id, const std::vector<Attribute> &recordDescriptor);
-
-
+        RC isSystemTable(bool &system, const std::string &tableName);
 
 
 
