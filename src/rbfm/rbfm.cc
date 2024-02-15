@@ -468,7 +468,7 @@ namespace PeterDB {
     }
 
     RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
-        if (getNextSlot() == -1) {
+        if (getNextSlot() == RBFM_EOF) {
             return RBFM_EOF;
         }
 
@@ -502,19 +502,62 @@ namespace PeterDB {
     }
 
     RC RBFM_ScanIterator::getNextSlot() {
+        slotNum++;
         if (slotNum > numberOfSlots) {
-            if (pageNum == numberOfPages) {
+            pageNum++;
+            if (pageNum >= numberOfPages) {
                 return RBFM_EOF;
             }
-            pageNum++;
-            slotNum = 1;
             fileHandle.readPage(pageNum, page);
+            slotNum = 1;
             numberOfSlots = rbfm->getTotalSlots(page);
-            return 0;
         }
-        slotNum++;
         return 0;
-    };
+    }
+
+    bool RBFM_ScanIterator::checkCondition(void* data, std::vector<Attribute> &recordDescriptor) {
+        std::vector<bool> isNull = rbfm->extractNullInformation((char*)data, recordDescriptor);
+        unsigned nullIndicatorSize = ceil(static_cast<double>(recordDescriptor.size()) / 8.0);
+        char* dataPtr = (char*) data + nullIndicatorSize; // Skip Null for now
+
+        for (int i = 0; i < recordDescriptor.size(); i++) {
+            if (!isNull[i]) {
+                if (recordDescriptor[i].name == conditionAttribute) {
+                    if (recordDescriptor[i].type == TypeInt) {
+                        int num;
+                        memcpy(&num, dataPtr, sizeof(int));
+                        return compareInt(num, value, compOp);
+                    }
+                    else if (recordDescriptor[i].type == TypeReal) {
+                        float real;
+                        memcpy(&real, dataPtr, sizeof(float));
+                        return compareReal(real, value, compOp);
+                    }
+                    else if (recordDescriptor[i].type == TypeVarChar) {
+                        int length;
+                        memcpy(&length, dataPtr, sizeof(int));
+                        dataPtr += sizeof(int);
+                        char* str = new char[length + 1];
+                        memcpy(str, dataPtr, length);
+                        str[length] = '\0';
+                        bool result = compareVarchar(str, value, compOp);
+                        delete[] str; // Avoid memory leak
+                        return result;
+                    }
+                }
+                else {
+                    if (recordDescriptor[i].type == TypeVarChar) {
+                        int varcharLength = 0;
+                        memcpy(&varcharLength, dataPtr, sizeof(int));
+                        dataPtr += sizeof(int) + varcharLength;
+                    } else {
+                        dataPtr += sizeof(int);
+                    }
+                }
+            }
+        }
+        return false;
+    }
 
     bool RBFM_ScanIterator::compareInt(int &num, const void *newValue, CompOp compareOp) {
         if (compOp == NO_OP) {
@@ -581,57 +624,6 @@ namespace PeterDB {
         return false; // Default case
     }
 
-
-    bool RBFM_ScanIterator::checkCondition(void* data, std::vector<Attribute> &recordDescriptor) {
-        std::vector<bool> isNull = rbfm->extractNullInformation((char*)data, recordDescriptor);
-        unsigned nullIndicatorSize = ceil(static_cast<double>(recordDescriptor.size()) / 8.0);
-        char* dataPtr = (char*) data + nullIndicatorSize; // Skip Null for now
-
-        for (int i = 0; i < recordDescriptor.size(); i++) {
-            if (!isNull[i]) {
-                if (recordDescriptor[i].name == conditionAttribute) {
-                    switch (recordDescriptor[i].type) {
-                        case TypeInt: {
-                            int num;
-                            memcpy(&num, dataPtr, sizeof(int));
-                            return compareInt(num, value, compOp);
-                        }
-                        case TypeReal: {
-                            float real;
-                            memcpy(&real, dataPtr, sizeof(float));
-                            return compareReal(real, value, compOp);
-                        }
-                        case TypeVarChar: {
-                            int length;
-                            memcpy(&length, dataPtr, sizeof(int));
-                            dataPtr += sizeof(int);
-                            char* str = new char[length + 1];
-                            memcpy(str, dataPtr, length);
-                            str[length] = '\0'; // Correctly place the null terminator
-                            bool result = compareVarchar(str, value, compOp);
-                            delete[] str;
-                            return result;
-                        }
-                    }
-                } else {
-                    // Increment dataPtr for non-matching attributes
-                    switch (recordDescriptor[i].type) {
-                        case TypeInt:
-                        case TypeReal:
-                            dataPtr += sizeof(int); // Int and Real are 4 bytes
-                            break;
-                        case TypeVarChar: {
-                            int length;
-                            memcpy(&length, dataPtr, sizeof(int));
-                            dataPtr += sizeof(int) + length; // Skip length and VarChar data
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        return false;
-    }
     void RBFM_ScanIterator::extractAttributesAndNullBits(const std::vector<Attribute> &recordDescriptor,
             const std::vector<std::string> &attributeNames, const char *record, void *data) {
         std::vector<bool> nullBits;
@@ -753,28 +745,37 @@ namespace PeterDB {
 
     unsigned RecordBasedFileManager::getRecordSize(const void *data, const std::vector<Attribute> &recordDescriptor, std::vector<bool> isNull) {
         unsigned nullIndicatorSize = ceil(static_cast<double>(recordDescriptor.size()) / 8.0);
-        unsigned recordSize = 0;
-        recordSize += nullIndicatorSize;
-        char* dataPtr = (char*)data + nullIndicatorSize; // skip past null fields
+        unsigned fieldSize = recordDescriptor.size();
+        unsigned recordSize = nullIndicatorSize; // Start with the size of the null indicator
 
-        for (int i = 0; i < recordDescriptor.size(); ++i) {
+        const char* dataPtr = (const char*)data + nullIndicatorSize; // Skip past the null indicator
+
+        for (size_t i = 0; i < recordDescriptor.size(); i++) {
             if (!isNull[i]) {
-                if (recordDescriptor[i].type == TypeVarChar) {
-                    int varcharLength = 0;
-                    memcpy(&varcharLength, dataPtr, sizeof(int));
-                    recordSize += sizeof(int) + varcharLength;
-                    dataPtr += sizeof(int) + varcharLength;
-                } else if (recordDescriptor[i].type == TypeInt) {
-                    recordSize += sizeof(int);
-                    dataPtr += sizeof(int);
-                } else if (recordDescriptor[i].type == TypeReal) {
-                    recordSize += sizeof(float);
-                    dataPtr += sizeof(float);
+                switch (recordDescriptor[i].type) {
+                    case TypeVarChar: {
+                        // For VarChar, read the length, then add it along with the size of the length field itself
+                        unsigned varcharLength;
+                        memcpy(&varcharLength, dataPtr, sizeof(unsigned));
+                        recordSize += sizeof(unsigned) + varcharLength;
+                        dataPtr += sizeof(unsigned) + varcharLength; // Move past this VarChar field
+                        break;
+                    }
+                    case TypeInt:
+                        recordSize += sizeof(int);
+                        dataPtr += sizeof(int); // Move past this integer field
+                        break;
+                    case TypeReal:
+                        recordSize += sizeof(float);
+                        dataPtr += sizeof(float); // Move past this float field
+                        break;
                 }
             }
         }
+
         return recordSize;
     }
+
 
     unsigned RecordBasedFileManager::getTotalSlots(void *page) {
         unsigned numSlots;

@@ -58,6 +58,8 @@ namespace PeterDB {
 
     RC RelationManager::createCatalog() {
         RecordBasedFileManager &rbfm = RecordBasedFileManager::instance();
+        tableDescriptor.clear();
+        columnDescriptor.clear();
         createTablesRecordDescriptor(tableDescriptor);
         createColumnsRecordDescriptor(columnDescriptor);
 
@@ -105,7 +107,7 @@ namespace PeterDB {
     RC RelationManager::createTable(const std::string &tableName, const std::vector<Attribute> &attrs) {
         RecordBasedFileManager &rbfm = RecordBasedFileManager::instance();
         FileHandle fileHandle;
-        RID rid;
+        unsigned fieldSize = attrs.size();
 
         // Get tableID
         unsigned tableID;
@@ -116,7 +118,6 @@ namespace PeterDB {
         if (rbfm.createFile(tableName)) {
             return -1;
         }
-
 
         // Insert table into Tables
         if (insertTable(tableName, tableID, false)){
@@ -208,14 +209,14 @@ namespace PeterDB {
         std::vector<std::string> attributeNames{"column-name", "column-type", "column-length"};
         RBFM_ScanIterator rbfm_si;
         // Scan through Columns for records with matching table_id.
-        if (rbfm.scan(fileHandle, columnDescriptor, "table_id", EQ_OP, value, attributeNames, rbfm_si)) {
+        if (rbfm.scan(fileHandle, columnDescriptor, "table-id", EQ_OP, value, attributeNames, rbfm_si)) {
             rbfm.closeFile(fileHandle);
             return -1;
         }
 
         RID rid;
         RC result;
-
+        attrs.clear();
         char *data = new char[PAGE_SIZE];
         while ((result = rbfm_si.getNextRecord(rid, data)) != RBFM_EOF) {
             if (result == 0) {

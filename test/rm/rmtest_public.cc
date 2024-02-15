@@ -54,27 +54,27 @@ namespace PeterDBTesting {
 
     }
 
-//    TEST_F(RM_Tuple_Test, get_attributes) {
-//        // Functions Tested
-//        // 1. getAttributes
-//
-//        // GetAttributes
-//        ASSERT_EQ(rm.getAttributes(tableName, attrs), success) << "RelationManager::getAttributes() should succeed.";
-//
-//        ASSERT_EQ(attrs[0].name, "emp_name") << "Attribute is not correct.";
-//        ASSERT_EQ(attrs[0].type, PeterDB::TypeVarChar) << "Attribute is not correct.";
-//        ASSERT_EQ(attrs[0].length, 50) << "Attribute is not correct.";
-//        ASSERT_EQ(attrs[1].name, "age") << "Attribute is not correct.";
-//        ASSERT_EQ(attrs[1].type, PeterDB::TypeInt) << "Attribute is not correct.";
-//        ASSERT_EQ(attrs[1].length, 4) << "Attribute is not correct.";
-//        ASSERT_EQ(attrs[2].name, "height") << "Attribute is not correct.";
-//        ASSERT_EQ(attrs[2].type, PeterDB::TypeReal) << "Attribute is not correct.";
-//        ASSERT_EQ(attrs[2].length, 4) << "Attribute is not correct.";
-//        ASSERT_EQ(attrs[3].name, "salary") << "Attribute is not correct.";
-//        ASSERT_EQ(attrs[3].type, PeterDB::TypeReal) << "Attribute is not correct.";
-//        ASSERT_EQ(attrs[3].length, 4) << "Attribute is not correct.";
-//
-//    }
+    TEST_F(RM_Tuple_Test, get_attributes) {
+        // Functions Tested
+        // 1. getAttributes
+
+        // GetAttributes
+        ASSERT_EQ(rm.getAttributes(tableName, attrs), success) << "RelationManager::getAttributes() should succeed.";
+
+        ASSERT_EQ(attrs[0].name, "emp_name") << "Attribute is not correct.";
+        ASSERT_EQ(attrs[0].type, PeterDB::TypeVarChar) << "Attribute is not correct.";
+        ASSERT_EQ(attrs[0].length, 50) << "Attribute is not correct.";
+        ASSERT_EQ(attrs[1].name, "age") << "Attribute is not correct.";
+        ASSERT_EQ(attrs[1].type, PeterDB::TypeInt) << "Attribute is not correct.";
+        ASSERT_EQ(attrs[1].length, 4) << "Attribute is not correct.";
+        ASSERT_EQ(attrs[2].name, "height") << "Attribute is not correct.";
+        ASSERT_EQ(attrs[2].type, PeterDB::TypeReal) << "Attribute is not correct.";
+        ASSERT_EQ(attrs[2].length, 4) << "Attribute is not correct.";
+        ASSERT_EQ(attrs[3].name, "salary") << "Attribute is not correct.";
+        ASSERT_EQ(attrs[3].type, PeterDB::TypeReal) << "Attribute is not correct.";
+        ASSERT_EQ(attrs[3].length, 4) << "Attribute is not correct.";
+
+    }
 
     TEST_F(RM_Tuple_Test, insert_and_read_tuple) {
         // Functions tested
