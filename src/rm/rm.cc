@@ -17,7 +17,7 @@ namespace PeterDB {
 
     RelationManager &RelationManager::operator=(const RelationManager &) = default;
 
-    RC RelationManager::insertTable(const std::string &tableName, unsigned tableID, bool isSystem) {
+    RC RelationManager::insertTable(const std::string &tableName, unsigned tableID, bool isSys) {
         RecordBasedFileManager &rbfm = RecordBasedFileManager::instance();
         FileHandle fileHandle;
         RID rid;
@@ -27,7 +27,7 @@ namespace PeterDB {
         }
 
         char *data = new char[TABLES_RECORD_SIZE];
-        prepareTablesRecord(tableName, tableID, isSystem, (void*)data);
+        prepareTablesRecord(tableName, tableID, isSys, (void*)data);
         rbfm.insertRecord(fileHandle, tableDescriptor, (void*)data, rid);
         rbfm.closeFile(fileHandle);
         delete[] data;
@@ -134,17 +134,17 @@ namespace PeterDB {
     RC RelationManager::deleteTable(const std::string &tableName) {
         RecordBasedFileManager &rbfm = RecordBasedFileManager::instance();
 
-        bool isSystem = false;
-        if (isSystemTable(isSystem, tableName))
+        bool isSys = false;
+        if (checkSys(isSys, tableName)) // table might not exist
             return -1;
-        if (isSystem)
+        if (isSys)
             return -1;
 
         // get tableID
         unsigned tableId;
         if (getTableID(tableName, tableId)) {
             return -1;
-        };
+        }
         // Delete the tableName file
         if (rbfm.destroyFile(tableName)) {
             return -1;
@@ -254,23 +254,27 @@ namespace PeterDB {
     }
 
     RC RelationManager::insertTuple(const std::string &tableName, const void *data, RID &rid) {
+        bool isSys = false;
+        if (checkSys(isSys, tableName)) // table might not exist
+            return -1;
+
+        if (isSys)
+            return -1;
+
+        std::vector<Attribute> recordDescriptor;
+        if (getAttributes(tableName, recordDescriptor) != 0) {
+            return -1;
+        };
+
         RecordBasedFileManager &rbfm = RecordBasedFileManager::instance();
         FileHandle fileHandle;
-        std::vector<Attribute> recordDescriptor;
-
-        bool isSystem = false;
-        if (isSystemTable(isSystem, tableName))
-            return -1;
-
-        if (isSystem)
-            return -1;
-
-        getAttributes(tableName, recordDescriptor);
         if (rbfm.openFile(tableName, fileHandle)) {
             return -1;
         }
 
         rbfm.insertRecord(fileHandle, recordDescriptor, data, rid);
+        rbfm.closeFile(fileHandle);
+
 
         return 0;
     }
@@ -278,11 +282,11 @@ namespace PeterDB {
     RC RelationManager::deleteTuple(const std::string &tableName, const RID &rid) {
         RecordBasedFileManager &rbfm = RecordBasedFileManager::instance();
 
-        bool isSystem = false;
-        if (isSystemTable(isSystem, tableName))
+        bool isSys = false;
+        if (checkSys(isSys, tableName)) // table might not exist
             return -1;
 
-        if (isSystem)
+        if (isSys)
             return -1;
 
 
@@ -303,19 +307,19 @@ namespace PeterDB {
     }
 
     RC RelationManager::updateTuple(const std::string &tableName, const void *data, const RID &rid) {
-        RecordBasedFileManager &rbfm = RecordBasedFileManager::instance();
-
-        bool isSystem = false;
-        if (isSystemTable(isSystem, tableName))
+        bool isSys = false;
+        if (checkSys(isSys, tableName)) // table might not exist
             return -1;
 
-        if (isSystem)
+        if (isSys)
             return -1;
 
         std::vector<Attribute> recordDescriptor;
         if (getAttributes(tableName, recordDescriptor)) {
             return -1;
         }
+
+        RecordBasedFileManager &rbfm = RecordBasedFileManager::instance();
         FileHandle fileHandle;
         if (rbfm.openFile(tableName, fileHandle)) {
             return -1;
@@ -342,7 +346,7 @@ namespace PeterDB {
         }
         if (rbfm.readRecord(fileHandle, recordDescriptor, rid, data)) {
             return -1;
-        };
+        }
         rbfm.closeFile(fileHandle);
         return 0;
     }
@@ -357,17 +361,17 @@ namespace PeterDB {
         RecordBasedFileManager &rbfm = RecordBasedFileManager::instance();
 
         std::vector<Attribute> recordDescriptor;
-        if (getAttributes(tableName, recordDescriptor)) {
+        if (getAttributes(tableName, recordDescriptor) != 0) {
             return -1;
         }
         FileHandle fileHandle;
-        if (rbfm.openFile(tableName, fileHandle)) {
+        if (rbfm.openFile(tableName, fileHandle) != 0) {
+            return -1;
+        }
+        if (rbfm.readAttribute(fileHandle, recordDescriptor, rid, attributeName, data) != 0) {
             return -1;
         }
 
-        if (rbfm.readAttribute(fileHandle, recordDescriptor, rid, attributeName, data)) {
-            return -1;
-        }
         rbfm.closeFile(fileHandle);
         return 0;
     }
@@ -448,7 +452,7 @@ namespace PeterDB {
         return 0;
     }
 
-    void RelationManager::prepareTablesRecord(const std::string &tableName, unsigned &tableId, bool isSystem, void *data) {
+    void RelationManager::prepareTablesRecord(const std::string &tableName, unsigned &tableId, bool isSys, void *data) {
         /* need:
          * table-id
          * table-name
@@ -479,13 +483,13 @@ namespace PeterDB {
         memcpy(dataPtr, tableName.c_str(), str_length);
         dataPtr += str_length;
         // system indicator
-        unsigned sysByte = (isSystem) ? 1 : 0;
+        unsigned sysByte = (isSys) ? 1 : 0;
         memcpy(dataPtr, &sysByte, sizeof(unsigned));
 
         delete[] nullIndicator;
     }
 
-    void RelationManager::prepareColumnsRecord(unsigned &tableID, const Attribute &attr, unsigned &position, void *data, bool isSystem) {
+    void RelationManager::prepareColumnsRecord(unsigned &tableID, const Attribute &attr, unsigned &position, void *data, bool isSys) {
 
         unsigned str_length = attr.name.length();
         char* dataPtr = (char*)data;
@@ -516,7 +520,7 @@ namespace PeterDB {
         memcpy(dataPtr, &position, sizeof(unsigned));
         dataPtr += sizeof(unsigned);
         // system indicator
-        unsigned sysByte = (isSystem) ? 1 : 0;
+        unsigned sysByte = (isSys) ? 1 : 0;
         memcpy(dataPtr, &sysByte, sizeof(unsigned));
 
         delete[] nullIndicator;
@@ -559,7 +563,7 @@ namespace PeterDB {
 
         if (rbfm.openFile("Tables", fileHandle)) {
             return -1;
-        };
+        }
 
         std::vector<std::string> attributes{"table-id"};
         RBFM_ScanIterator rbfm_si;
@@ -592,7 +596,7 @@ namespace PeterDB {
         return 0;
     }
 
-    RC RelationManager::isSystemTable(bool &system, const std::string &tableName) {
+    RC RelationManager::checkSys(bool &system, const std::string &tableName) {
         RecordBasedFileManager &rbfm = RecordBasedFileManager::instance();
         FileHandle fileHandle;
 

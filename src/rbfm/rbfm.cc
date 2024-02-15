@@ -388,6 +388,7 @@ namespace PeterDB {
             readAttribute(fileHandle, recordDescriptor, rid_t, attributeName, data);
             return 0;
         }
+        // reading a deleted slot
         if (length == 0) {
             return -1;
         }
@@ -428,6 +429,7 @@ namespace PeterDB {
                 dataPtr += fieldSize;
             }
         }
+        delete[] page;
         return -1;
     }
 

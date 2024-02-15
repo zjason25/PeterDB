@@ -83,7 +83,7 @@ namespace PeterDB {
         RC parseInt(unsigned &table_id, const void* data);
         RC insertTable(const std::string &table_name, unsigned table_id, bool isSystem);
         RC insertColumns(unsigned table_id, const std::vector<Attribute> &recordDescriptor);
-        RC isSystemTable(bool &system, const std::string &tableName);
+        RC checkSys(bool &system, const std::string &tableName);
 
 
 

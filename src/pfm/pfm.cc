@@ -44,6 +44,9 @@ namespace PeterDB {
         const char* fileName_c = fileName.c_str();
         if (access(fileName_c, F_OK) == 0) {
             FILE* pageFile = fopen(fileName_c, "rb+");
+            if (pageFile == nullptr) {
+                return -1;
+            }
             fileHandle.updateOpenedFile(pageFile);
             return 0;
         }
