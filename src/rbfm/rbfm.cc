@@ -468,34 +468,32 @@ namespace PeterDB {
     }
 
     RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
-        if (getNextSlot() == -1) {return RBFM_EOF;}
-
-        // Not returning any result
-        if (attributeNames.empty()) {
-            rid.pageNum = pageNum;
-            rid.slotNum = slotNum;
-            return 0;
+        if (getNextSlot() == -1) {
+            return RBFM_EOF;
         }
 
         rid.pageNum = pageNum;
         rid.slotNum = slotNum;
+        // Not returning any result
+        if (attributeNames.empty()) {
+            return -2;
+        }
+
         char* record = new char[PAGE_SIZE];
         rbfm->readNextRecord(fileHandle, rid, page, record);
-
 
         // Two passes over record
         // 1. Check for conditionAttribute
         if (!conditionAttribute.empty()) {
-            bool condition = checkCondition(record, recordDescriptor);
             // no matching record
-            if (!condition) {
-                rid.pageNum = pageNum;
-                rid.slotNum = slotNum;
-                return 0;
+            if (!checkCondition(record, recordDescriptor)) {
+                delete[] record;
+                return -2;
             }
         }
         // 2. Extract Attribute in attributeNames
         extractAttributesAndNullBits(recordDescriptor, attributeNames, record, data);
+        delete[] record;
         return 0;
     };
     RC RBFM_ScanIterator::close() {
@@ -536,6 +534,7 @@ namespace PeterDB {
         }
         return false;
     }
+
     bool RBFM_ScanIterator::compareReal(float &real, const void *newValue, CompOp compareOp) {
         if (compOp == NO_OP) {
             return true;
@@ -554,6 +553,7 @@ namespace PeterDB {
         }
         return false;
     }
+
     bool RBFM_ScanIterator::compareVarchar(char* str, const void *newValue, CompOp compareOp) {
         if (compOp == NO_OP) {
             return true;
@@ -562,10 +562,11 @@ namespace PeterDB {
         int length;
         memcpy(&length, (char*)newValue, sizeof(int));
         char* valStr = new char[length + 1];
-        memcpy(valStr, newValue, length);
-        valStr[length + 1] = '\0';
+        memcpy(valStr, (char*)newValue + sizeof(int), length);
+        valStr[length] = '\0';
 
         int result = strcmp(str, valStr);
+        delete[] valStr;
 
         switch (compareOp) {
             case EQ_OP: return result == 0;
@@ -574,53 +575,62 @@ namespace PeterDB {
             case GT_OP: return result > 0;
             case GE_OP: return result >= 0;
             case NE_OP: return result != 0;
-            case NO_OP: return true;
+            case NO_OP:
+                return true;
         }
-        return false;
+        return false; // Default case
     }
+
 
     bool RBFM_ScanIterator::checkCondition(void* data, std::vector<Attribute> &recordDescriptor) {
         std::vector<bool> isNull = rbfm->extractNullInformation((char*)data, recordDescriptor);
         unsigned nullIndicatorSize = ceil(static_cast<double>(recordDescriptor.size()) / 8.0);
         char* dataPtr = (char*) data + nullIndicatorSize; // Skip Null for now
-        unsigned fieldSize = 0;
-        bool condition = false;
 
         for (int i = 0; i < recordDescriptor.size(); i++) {
             if (!isNull[i]) {
                 if (recordDescriptor[i].name == conditionAttribute) {
-                    if (recordDescriptor[i].type == TypeInt) {
-                        int num;
-                        memcpy(&num, dataPtr, sizeof(int));
-                        return compareInt(num, value, compOp);
+                    switch (recordDescriptor[i].type) {
+                        case TypeInt: {
+                            int num;
+                            memcpy(&num, dataPtr, sizeof(int));
+                            return compareInt(num, value, compOp);
+                        }
+                        case TypeReal: {
+                            float real;
+                            memcpy(&real, dataPtr, sizeof(float));
+                            return compareReal(real, value, compOp);
+                        }
+                        case TypeVarChar: {
+                            int length;
+                            memcpy(&length, dataPtr, sizeof(int));
+                            dataPtr += sizeof(int);
+                            char* str = new char[length + 1];
+                            memcpy(str, dataPtr, length);
+                            str[length] = '\0'; // Correctly place the null terminator
+                            bool result = compareVarchar(str, value, compOp);
+                            delete[] str;
+                            return result;
+                        }
                     }
-                    else if (recordDescriptor[i].type == TypeReal) {
-                        float real;
-                        memcpy(&real, dataPtr, sizeof(float));
-                        return compareReal(real, value, compOp);
-                    }
-                    else if (recordDescriptor[i].type == TypeVarChar) {
-                        int length;
-                        memcpy(&length, (char*)dataPtr, sizeof(int));
-                        dataPtr += sizeof(int);
-                        char* str = new char[length + 1];
-                        str[length + 1] = '\0';
-                        return compareVarchar(str, value, compOp);
+                } else {
+                    // Increment dataPtr for non-matching attributes
+                    switch (recordDescriptor[i].type) {
+                        case TypeInt:
+                        case TypeReal:
+                            dataPtr += sizeof(int); // Int and Real are 4 bytes
+                            break;
+                        case TypeVarChar: {
+                            int length;
+                            memcpy(&length, dataPtr, sizeof(int));
+                            dataPtr += sizeof(int) + length; // Skip length and VarChar data
+                            break;
+                        }
                     }
                 }
-                else {
-                    if (recordDescriptor[i].type == TypeVarChar) {
-                        int varcharLength = 0;
-                        memcpy(&varcharLength, dataPtr, sizeof(int));
-                        fieldSize = sizeof(int) + varcharLength;
-                    } else {
-                        fieldSize = sizeof(int);
-                    }
-                }
-                dataPtr += fieldSize;
             }
         }
-        return condition;
+        return false;
     }
     void RBFM_ScanIterator::extractAttributesAndNullBits(const std::vector<Attribute> &recordDescriptor,
             const std::vector<std::string> &attributeNames, const char *record, void *data) {

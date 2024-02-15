@@ -1,6 +1,7 @@
 # Created by .ignore support plugin (hsz.mobi)
 ### CMake template
 CMakeLists.txt.user
+CMakeLists.txt
 CMakeCache.txt
 CMakeFiles
 CMakeScripts
