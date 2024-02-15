@@ -412,7 +412,10 @@ namespace PeterDB {
                     } else if (recordDescriptor[i].type == TypeReal) {
                         fieldSize = sizeof(float);
                     }
-                    memcpy(data, dataPtr, fieldSize);
+                    char null = 0;
+                    memcpy(data, &null, 1);
+                    memcpy((char*)data+1, dataPtr, fieldSize);
+                    delete[] page;
                     return 0;
                 }
                 else {
@@ -429,6 +432,8 @@ namespace PeterDB {
                 dataPtr += fieldSize;
             }
         }
+        char null = 1;
+        memcpy(data, &null, 1);
         delete[] page;
         return -1;
     }
@@ -490,6 +495,7 @@ namespace PeterDB {
             // no matching record
             if (!checkCondition(record, recordDescriptor)) {
                 delete[] record;
+//                return getNextRecord(rid, data);
                 return -2;
             }
         }
@@ -497,7 +503,8 @@ namespace PeterDB {
         extractAttributesAndNullBits(recordDescriptor, attributeNames, record, data);
         delete[] record;
         return 0;
-    };
+    }
+
     RC RBFM_ScanIterator::close() {
         free(page);
         return 0;

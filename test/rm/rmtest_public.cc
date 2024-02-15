@@ -406,6 +406,7 @@ namespace PeterDBTesting {
 
     }
 
+    // check
     TEST_F(RM_Large_Table_Test, insert_large_tuples) {
         // Functions Tested for large tables:
         // 1. getAttributes
@@ -801,6 +802,7 @@ namespace PeterDBTesting {
 
     }
 
+    // check
     TEST_F(RM_Catalog_Scan_Test, catalog_tables_table_check) {
         // Functions Tested:
         // 1. System Catalog Implementation - Tables table
@@ -1441,6 +1443,7 @@ namespace PeterDBTesting {
 
     }
 
+    // check
     TEST_F(RM_Catalog_Scan_Test_2, create_table_with_same_name) {
         std::vector<PeterDB::Attribute> table_attrs = parseDDL(
                 "CREATE TABLE " + tableName +
