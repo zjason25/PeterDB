@@ -2,6 +2,10 @@
 #define _pfm_h_
 
 #define PAGE_SIZE 4096
+#define NUM_PAGE_POS 0
+#define READ_PAGE_CNT_POS 1
+#define WRITE_PAGE_CNT_POS 2
+#define APPEND_PAGE_CNT_POS 3
 
 #include <string>
 
@@ -47,9 +51,8 @@ namespace PeterDB {
                                 unsigned &appendPageCount);                 // Put current counter values into variables
         void createHiddenPage();
         void updateOpenedFile(FILE * pageFile);
-        unsigned getReadPageCnt();
-        unsigned getWritePageCnt();
-        unsigned getAppendPageCnt();
+        unsigned getCounterValue(int offset);
+        RC setCounterValue(unsigned value, int offset);
         RC setNumberOfPages(unsigned numOfPages);
         RC setReadPageCnt(unsigned readPageCnt);
         RC setWritePageCnt(unsigned writePageCnt);

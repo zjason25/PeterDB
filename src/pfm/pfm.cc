@@ -77,7 +77,7 @@ namespace PeterDB {
             size_t result = fread(data, sizeof(char), PAGE_SIZE, openedFile);
             if (result == PAGE_SIZE) {
                 //update readPageCounter
-                readPageCounter = getReadPageCnt() + 1;
+                readPageCounter++;
                 setReadPageCnt(readPageCounter);
                 return 0;
             }
@@ -97,7 +97,7 @@ namespace PeterDB {
         fflush(openedFile);
         if (result == PAGE_SIZE) {
             //update writePageCounter
-            writePageCounter = getWritePageCnt() + 1;
+            writePageCounter++;
             setWritePageCnt(writePageCounter);
             return 0;
         }
@@ -111,11 +111,10 @@ namespace PeterDB {
         fwrite(data, sizeof(char), PAGE_SIZE, openedFile);
         fflush(openedFile);
         //update appendPageCounter
-        appendPageCounter = getAppendPageCnt() + 1;
+        appendPageCounter++;
         setAppendPageCnt(appendPageCounter);
         //update the number of pages
-        unsigned pageNumber = getNumberOfPages() + 1;
-        setNumberOfPages(pageNumber);
+        setNumberOfPages(getNumberOfPages() + 1);
         return 0;
     }
 
@@ -128,65 +127,43 @@ namespace PeterDB {
 
     void FileHandle::updateOpenedFile(FILE * pageFile) {
         openedFile = pageFile;
-        readPageCounter = getReadPageCnt();
-        writePageCounter = getWritePageCnt();
-        appendPageCounter = getAppendPageCnt();
+        readPageCounter = getCounterValue(READ_PAGE_CNT_POS);
+        writePageCounter = getCounterValue(WRITE_PAGE_CNT_POS);
+        appendPageCounter = getCounterValue(APPEND_PAGE_CNT_POS);
+    }
+
+    unsigned FileHandle::getCounterValue(int offset) {
+        unsigned counter = 0;
+        fseek(openedFile, offset * sizeof(unsigned), SEEK_SET);
+        fread(&counter, sizeof(unsigned), 1, openedFile);
+        return counter;
+    }
+
+    RC FileHandle::setCounterValue(unsigned value, int offset) {
+        fseek(openedFile, offset * sizeof(unsigned), SEEK_SET);
+        fwrite(&value, sizeof(unsigned), 1, openedFile);
+        fflush(openedFile);
+        return 0;
     }
 
     unsigned FileHandle::getNumberOfPages() {
-        unsigned numPages = 0;
-        fseek(openedFile, 0, SEEK_SET); // the start
-        fread(&numPages, sizeof(unsigned), 1, openedFile);
-        return numPages;
-    }
-
-    unsigned FileHandle::getReadPageCnt() {
-        unsigned readPageCnt = 0;
-        fseek(openedFile, sizeof(unsigned), SEEK_SET); // 1 offset
-        fread(&readPageCnt, sizeof(unsigned), 1, openedFile);
-        return readPageCnt;
-    }
-
-    unsigned FileHandle::getWritePageCnt() {
-        unsigned writePageCnt = 0;
-        fseek(openedFile, sizeof(unsigned)*2, SEEK_SET); // 2 offsets over
-        fread(&writePageCnt, sizeof(unsigned), 1, openedFile);
-        return writePageCnt;
-    }
-
-    unsigned FileHandle::getAppendPageCnt() {
-        unsigned appendPageCnt = 0;
-        fseek(openedFile, sizeof(unsigned)*3, SEEK_SET); // 3 offsets over
-        fread(&appendPageCnt, sizeof(unsigned), 1, openedFile);
-        return appendPageCnt;
+        return getCounterValue(READ_PAGE_CNT_POS);
     }
 
     RC FileHandle::setNumberOfPages(unsigned numOfPages) {
-        fseek(openedFile, 0, SEEK_SET); // the start
-        fwrite(&numOfPages, sizeof(unsigned), 1, openedFile);
-        fflush(openedFile);
-        return 0;
+        return setCounterValue(numOfPages, NUM_PAGE_POS);
     }
 
     RC FileHandle::setReadPageCnt(unsigned readPageCnt) {
-        fseek(openedFile, sizeof(unsigned), SEEK_SET); // 1 offset over
-        fwrite(&readPageCnt, sizeof(unsigned), 1, openedFile);
-        fflush(openedFile);
-        return 0;
+        return setCounterValue(readPageCnt, READ_PAGE_CNT_POS);
     }
 
     RC FileHandle::setWritePageCnt(unsigned writePageCnt) {
-        fseek(openedFile, sizeof(unsigned)*2, SEEK_SET); // 2 offsets over
-        fwrite(&writePageCnt, sizeof(unsigned), 1, openedFile);
-        fflush(openedFile);
-        return 0;
+        return setCounterValue(writePageCnt, WRITE_PAGE_CNT_POS);
     }
 
     RC FileHandle::setAppendPageCnt(unsigned appendPageCnt) {
-        fseek(openedFile, sizeof(unsigned)*3, SEEK_SET); // 3 offsets over
-        fwrite(&appendPageCnt, sizeof(unsigned), 1, openedFile);
-        fflush(openedFile);
-        return 0;
+        return setCounterValue(appendPageCnt, APPEND_PAGE_CNT_POS);
     }
 
     void FileHandle::createHiddenPage() {
