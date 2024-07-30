@@ -147,7 +147,7 @@ namespace PeterDB {
     }
 
     unsigned FileHandle::getNumberOfPages() {
-        return getCounterValue(READ_PAGE_CNT_POS);
+        return getCounterValue(NUM_PAGE_POS);
     }
 
     RC FileHandle::setNumberOfPages(unsigned numOfPages) {
