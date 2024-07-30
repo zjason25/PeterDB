@@ -72,6 +72,7 @@ namespace PeterDB {
 
     RC FileHandle::readPage(PageNum pageNum, void *data) {
         if (pageNum < getNumberOfPages()) {
+            // Read pageNum + 1 to skip the hidden page
             fseek(openedFile, (pageNum + 1) * PAGE_SIZE, SEEK_SET);
             size_t result = fread(data, sizeof(char), PAGE_SIZE, openedFile);
             if (result == PAGE_SIZE) {
@@ -90,7 +91,6 @@ namespace PeterDB {
         if (pageNum >= totalPages) {
             return -1;
         }
-
         fseek(openedFile, (pageNum + 1) * PAGE_SIZE, SEEK_SET);
         size_t result = fwrite(data, sizeof(char), PAGE_SIZE, openedFile);
         fflush(openedFile);
