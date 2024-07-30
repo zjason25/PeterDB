@@ -20,6 +20,9 @@ namespace PeterDB {
         //if fileName does not already exist
         if (access(fileName_c, F_OK) != 0) {
             FILE * pageFile = fopen(fileName_c, "wb+");
+            if (!pageFile) {
+                return -1; // Failed to create file
+            }
             //create a hidden page in the file here
             FileHandle fileHandle;
             fileHandle.openedFile = pageFile;
@@ -65,12 +68,7 @@ namespace PeterDB {
 
     }
 
-    FileHandle::FileHandle() {
-        openedFile = nullptr; // FILE * . default a nullptr
-        readPageCounter = 0;
-        writePageCounter = 0;
-        appendPageCounter = 0;
-    }
+    FileHandle::FileHandle(): openedFile(nullptr), readPageCounter(0), writePageCounter(0), appendPageCounter(0) {}
     FileHandle::~FileHandle() = default;
 
     RC FileHandle::readPage(PageNum pageNum, void *data) {
@@ -78,10 +76,10 @@ namespace PeterDB {
             fseek(openedFile, (pageNum + 1) * PAGE_SIZE, SEEK_SET);
             size_t result = fread(data, sizeof(char), PAGE_SIZE, openedFile);
             if (result == PAGE_SIZE) {
-            //update readPageCounter
-            readPageCounter = getReadPageCnt() + 1;
-            setReadPageCnt(readPageCounter);
-            return 0;
+                //update readPageCounter
+                readPageCounter = getReadPageCnt() + 1;
+                setReadPageCnt(readPageCounter);
+                return 0;
             }
         }
         // page does not exist
@@ -90,18 +88,20 @@ namespace PeterDB {
 
     RC FileHandle::writePage(PageNum pageNum, const void *data) {
         PageNum totalPages = getNumberOfPages();
-        if (totalPages == 0) {appendPage(data);}
-        else if (pageNum < totalPages) {
-            fseek(openedFile, (pageNum + 1) * PAGE_SIZE, SEEK_SET);
-            size_t result = fwrite(data, sizeof(char), PAGE_SIZE, openedFile);
-            fflush(openedFile);
-            if (result == PAGE_SIZE) {
-                //update writePageCounter
-                writePageCounter = getWritePageCnt() + 1;
-                setWritePageCnt(writePageCounter);
-                return 0;
-            }
+        if (pageNum >= totalPages) {
+            return -1;
         }
+
+        fseek(openedFile, (pageNum + 1) * PAGE_SIZE, SEEK_SET);
+        size_t result = fwrite(data, sizeof(char), PAGE_SIZE, openedFile);
+        fflush(openedFile);
+        if (result == PAGE_SIZE) {
+            //update writePageCounter
+            writePageCounter = getWritePageCnt() + 1;
+            setWritePageCnt(writePageCounter);
+            return 0;
+        }
+
         // page does not exist
         return -1;
     }
