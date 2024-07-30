@@ -31,10 +31,10 @@ namespace PeterDB {
     class FileHandle {
     public:
         // variables to keep the counter for each operation
+        FILE * openedFile;
         unsigned readPageCounter;
         unsigned writePageCounter;
         unsigned appendPageCounter;
-        FILE * openedFile;
 
         FileHandle();                                                       // Default constructor
         ~FileHandle();                                                      // Destructor
