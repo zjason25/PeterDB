@@ -1,9 +1,9 @@
 #include "src/include/pfm.h"
 
 #include <cstdio>
-#include <cstdlib>
 #include <unistd.h>
 #include <cstring>
+#include <memory>
 
 namespace PeterDB {
     PagedFileManager &PagedFileManager::instance() {
@@ -191,23 +191,14 @@ namespace PeterDB {
 
     void FileHandle::createHiddenPage() {
         // creating the hidden page does not increment page count
-        char *pageInfo = new char[PAGE_SIZE];
-        unsigned numPages = 0, readPageCnt = 0, writePageCnt = 0, appendPageCnt = 0;
-        unsigned storage_size = sizeof(unsigned);
+        std::unique_ptr<char[]> pageInfo(new char[PAGE_SIZE]);
 
-        char* bytePtr = pageInfo;
-        memcpy(bytePtr,&numPages,storage_size);
-        bytePtr+=storage_size;
-        memcpy(bytePtr,&readPageCnt,storage_size);
-        bytePtr+=storage_size;
-        memcpy(bytePtr,&writePageCnt,storage_size);
-        bytePtr+=storage_size;
-        memcpy(bytePtr,&appendPageCnt,storage_size);
+        // Initialize numPage, readPage, writePage, and appendPage count
+        std::fill(pageInfo.get(), pageInfo.get() + PAGE_SIZE, 0);
 
         //write the hidden page
-        fwrite(pageInfo, sizeof(char), PAGE_SIZE, openedFile);
+        fwrite(pageInfo.get(), sizeof(char), PAGE_SIZE, openedFile);
         fflush(openedFile);
-        delete[] pageInfo;
     }
 
 } // namespace PeterDB
