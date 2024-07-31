@@ -194,7 +194,7 @@ namespace PeterDB {
                                            std::ostream &out) {
         std::vector<bool> isNull = extractNullInformation(data, recordDescriptor);
         unsigned numFields = recordDescriptor.size();
-        int nullIndicatorSize = ceil(static_cast<double>(numFields) / 8.0);
+        unsigned nullIndicatorSize = (recordDescriptor.size() + 7) / 8;
         const char* charData = static_cast<const char*>(data); // for string bytes reading
         charData += nullIndicatorSize;
 
@@ -396,7 +396,7 @@ namespace PeterDB {
 
         char* recordPtr = page + offset;
         std::vector<bool> isNull = extractNullInformation(recordPtr, recordDescriptor);
-        unsigned nullIndicatorSize = ceil(static_cast<double>(recordDescriptor.size()) / 8.0);
+        unsigned nullIndicatorSize = (recordDescriptor.size() + 7) / 8;
 
         // Copy the null-indicator bytes
         char *dataPtr = recordPtr + nullIndicatorSize;
@@ -527,7 +527,7 @@ namespace PeterDB {
 
     bool RBFM_ScanIterator::checkCondition(void* data, std::vector<Attribute> &recordDescriptor) {
         std::vector<bool> isNull = rbfm->extractNullInformation((char*)data, recordDescriptor);
-        unsigned nullIndicatorSize = ceil(static_cast<double>(recordDescriptor.size()) / 8.0);
+        unsigned nullIndicatorSize = (recordDescriptor.size() + 7) / 8;
         char* dataPtr = (char*) data + nullIndicatorSize; // Skip Null for now
 
         for (int i = 0; i < recordDescriptor.size(); i++) {
@@ -638,14 +638,14 @@ namespace PeterDB {
             const std::vector<std::string> &attributeNames, const char *record, void *data) {
         std::vector<bool> nullBits;
         std::vector<int> attributeIndexes;
-        unsigned newNullIndicatorSize = ceil(static_cast<double>(attributeNames.size()) / 8.0);
+        unsigned newNullIndicatorSize = (recordDescriptor.size() + 7) / 8;
         std::vector<unsigned char> newNullIndicator(newNullIndicatorSize, 0);
 
         // Temporary buffer to store extracted attributes before knowing the exact output size
         std::vector<char> tempBuffer;
 
         // Calculate the size of the original null indicator
-        size_t nullIndicatorSize = ceil(static_cast<double>(recordDescriptor.size()) / 8.0);
+        size_t nullIndicatorSize = (recordDescriptor.size() + 7) / 8;
         const char* currentPtr = record + nullIndicatorSize; // Start reading attributes after the null indicator
 
         for (int i = 0; i < recordDescriptor.size(); ++i) {
@@ -718,7 +718,7 @@ namespace PeterDB {
     }
 
     void *RecordBasedFileManager::createRecordStream(const void *data, const std::vector<Attribute> &recordDescriptor, const std::vector<bool> &isNull, unsigned &recordSize) {
-        unsigned nullIndicatorSize = ceil(static_cast<double>(recordDescriptor.size()) / 8.0); // Include size for null-indicator bytes
+        unsigned nullIndicatorSize = (recordDescriptor.size() + 7) / 8; // Include size for null-indicator bytes
         // Allocate memory for the new record stream
         char *recordStream = new char[recordSize];
         char *currentPointer = recordStream;
@@ -751,7 +751,7 @@ namespace PeterDB {
     }
 
     unsigned RecordBasedFileManager::getRecordSize(const void *data, const std::vector<Attribute> &recordDescriptor, std::vector<bool> &isNull) {
-        unsigned nullIndicatorSize = ceil(static_cast<double>(recordDescriptor.size()) / 8.0);
+        const unsigned nullIndicatorSize = (recordDescriptor.size() + 7) / 8;
         unsigned fieldSize = recordDescriptor.size();
         unsigned recordSize = nullIndicatorSize; // Start with the size of the null indicator
 
