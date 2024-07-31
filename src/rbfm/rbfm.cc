@@ -193,7 +193,7 @@ namespace PeterDB {
     RC RecordBasedFileManager::printRecord(const std::vector<Attribute> &recordDescriptor, const void *data,
                                            std::ostream &out) {
         std::vector<bool> isNull = extractNullInformation(data, recordDescriptor);
-        unsigned numFields = recordDescriptor.size();
+        unsigned fieldSize = recordDescriptor.size();
         unsigned nullIndicatorSize = (recordDescriptor.size() + 7) / 8;
         const char* charData = static_cast<const char*>(data); // for string bytes reading
         charData += nullIndicatorSize;
@@ -223,7 +223,7 @@ namespace PeterDB {
                 }
             }
             else {out << name << ": NULL";}
-            if (linebreak % numFields != 0) {
+            if (linebreak % fieldSize != 0) {
                 out << ", ";
                 linebreak++;
             } else {
@@ -702,11 +702,11 @@ namespace PeterDB {
 
 
     std::vector<bool> RecordBasedFileManager::extractNullInformation(const void *data, const std::vector<Attribute> &recordDescriptor) {
-        unsigned numFields = recordDescriptor.size();
+        unsigned fieldSize = recordDescriptor.size();
         const char *nullsIndicator = static_cast<const char*>(data);
 
-        std::vector<bool> isNull(numFields, false);
-        for (int i = 0; i < numFields; ++i) {
+        std::vector<bool> isNull(fieldSize, false);
+        for (int i = 0; i < fieldSize; ++i) {
             int byteIndex = i / 8;
             int bitIndex = i % 8;
             unsigned char mask = 1 << (7 - bitIndex);
@@ -751,38 +751,34 @@ namespace PeterDB {
     }
 
     unsigned RecordBasedFileManager::getRecordSize(const void *data, const std::vector<Attribute> &recordDescriptor, std::vector<bool> &isNull) {
-        const unsigned nullIndicatorSize = (recordDescriptor.size() + 7) / 8;
-        unsigned fieldSize = recordDescriptor.size();
-        unsigned recordSize = nullIndicatorSize; // Start with the size of the null indicator
+        const unsigned fieldSize = recordDescriptor.size();
+        const unsigned nullIndicatorSize = (fieldSize + 7) / 8;
+        unsigned recordSize = nullIndicatorSize; // Start with the size of the null indicator (in number of bytes)
 
-        const char* dataPtr = (const char*)data + nullIndicatorSize; // Skip past the null indicator
+        const unsigned numSize = sizeof(unsigned);
+        unsigned varcharLength;
+        data += nullIndicatorSize; // pointer arithmetic on the copy pointer
 
-        for (size_t i = 0; i < recordDescriptor.size(); i++) {
+        for (unsigned i = 0; i < fieldSize; i++) {
             if (!isNull[i]) {
                 switch (recordDescriptor[i].type) {
+                    // For VarChar, read the length, then add it along with the size of the length field itself
                     case TypeVarChar: {
-                        // For VarChar, read the length, then add it along with the size of the length field itself
-                        unsigned varcharLength;
-                        memcpy(&varcharLength, dataPtr, sizeof(unsigned));
-                        recordSize += sizeof(unsigned) + varcharLength;
-                        dataPtr += sizeof(unsigned) + varcharLength; // Move past this VarChar field
+                        varcharLength = *reinterpret_cast<const unsigned*>(data);
+                        recordSize += numSize + varcharLength;
+                        data += numSize + varcharLength; // Move past this VarChar field
                         break;
                     }
                     case TypeInt:
-                        recordSize += sizeof(int);
-                        dataPtr += sizeof(int); // Move past this integer field
-                        break;
                     case TypeReal:
-                        recordSize += sizeof(float);
-                        dataPtr += sizeof(float); // Move past this float field
+                        recordSize += numSize;
+                        data += numSize; // Move past this Int or Real field
                         break;
                 }
             }
         }
-
         return recordSize;
     }
-
 
     unsigned RecordBasedFileManager::getTotalSlots(void *page) {
         unsigned numSlots;
