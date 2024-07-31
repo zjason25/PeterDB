@@ -44,6 +44,7 @@ namespace PeterDB {
 
     RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                             const void *data, RID &rid) {
+        // Prepare null-fields indicator
         std::vector<bool> isNull = extractNullInformation(data, recordDescriptor);
         unsigned recordSize = getRecordSize(data, recordDescriptor, isNull);
         const char* record = (char*)createRecordStream(data, recordDescriptor, isNull, recordSize);
@@ -702,9 +703,7 @@ namespace PeterDB {
 
     std::vector<bool> RecordBasedFileManager::extractNullInformation(const void *data, const std::vector<Attribute> &recordDescriptor) {
         unsigned numFields = recordDescriptor.size();
-        unsigned nullIndicatorSize = ceil(static_cast<double>(numFields) / 8.0);
-        char *nullsIndicator = new char[nullIndicatorSize];
-        memcpy(nullsIndicator, (char*)data, nullIndicatorSize);
+        const char *nullsIndicator = static_cast<const char*>(data);
 
         std::vector<bool> isNull(numFields, false);
         for (int i = 0; i < numFields; ++i) {
@@ -715,7 +714,6 @@ namespace PeterDB {
                 isNull[i] = true;
             }
         }
-        delete[] nullsIndicator;
         return isNull;
     }
 
@@ -752,7 +750,7 @@ namespace PeterDB {
         return recordStream;
     }
 
-    unsigned RecordBasedFileManager::getRecordSize(const void *data, const std::vector<Attribute> &recordDescriptor, std::vector<bool> isNull) {
+    unsigned RecordBasedFileManager::getRecordSize(const void *data, const std::vector<Attribute> &recordDescriptor, std::vector<bool> &isNull) {
         unsigned nullIndicatorSize = ceil(static_cast<double>(recordDescriptor.size()) / 8.0);
         unsigned fieldSize = recordDescriptor.size();
         unsigned recordSize = nullIndicatorSize; // Start with the size of the null indicator
