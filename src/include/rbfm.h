@@ -163,7 +163,7 @@ namespace PeterDB {
         RC readNextRecord(FileHandle fileHandle, RID rid, void *data, void *record);
         std::vector<bool> extractNullInformation(const void *data, const std::vector<Attribute> &recordDescriptor);
         void *createRecordStream(const void *data, const std::vector<Attribute> &recordDescriptor, const std::vector<bool> &isNull, unsigned &recordSize);
-        unsigned getRecordSize(const void *data, const std::vector<Attribute> &recordDescriptor, std::vector<bool> isNull);
+        unsigned getRecordSize(const void *data, const std::vector<Attribute> &recordDescriptor, std::vector<bool> &isNull);
         unsigned getTotalSlots(void *data);
 
 
