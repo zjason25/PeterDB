@@ -46,8 +46,7 @@ namespace PeterDB {
                                             const void *data, RID &rid) {
         // Prepare null-fields indicator
         std::vector<bool> isNull = extractNullInformation(data, recordDescriptor);
-        unsigned recordSize = getRecordSize(data, recordDescriptor, isNull);
-        const char* record = (char*)createRecordStream(data, recordDescriptor, isNull, recordSize);
+        const unsigned recordSize = getRecordSize(data, recordDescriptor, isNull);
 
         unsigned numberOfSlots, freeSpace;
         unsigned offset, length;
@@ -61,7 +60,7 @@ namespace PeterDB {
             if (numPages == 0) {
                 // pointer to the start of directory ( --> | ([offset_1][length_1]) | [N][F] )
                 unsigned directory = PAGE_SIZE - 4 * sizeof(unsigned); // the left-most directory slot
-                memcpy(page, record, recordSize);
+                memcpy(page, data, recordSize);
                 offset = 0; // pointer to the start of the record, initialized at 0;
                 length = recordSize;
                 numberOfSlots = 1;
@@ -103,7 +102,7 @@ namespace PeterDB {
                 if (canInsert) {
                     // locate last byte array and insert after it
                     unsigned endOfRecords = directoryEnd - freeSpace;
-                    memcpy(page + endOfRecords , record, recordSize);
+                    memcpy(page + endOfRecords , data, recordSize);
 
                     // prepare to update directory and slot
                     offset = endOfRecords; // offset of the new array is (offset + length) of previous array
@@ -135,7 +134,7 @@ namespace PeterDB {
                     } //no space in all pages, append a new page
                     else if ((pageNum == fileHandle.getNumberOfPages()) && read) {
                         unsigned directory = PAGE_SIZE - 4 * sizeof(unsigned); // the left-most directory slot
-                        memcpy(page, record, recordSize);
+                        memcpy(page, data, recordSize);
                         offset = 0; // pointer to the start of the record, initialized at 0;
                         length = recordSize;
                         numberOfSlots = 1;
@@ -156,7 +155,6 @@ namespace PeterDB {
         }
 
         rid.pageNum = pageNum;
-        delete[] record;
         delete[] page;
         return 0;
     }
@@ -313,7 +311,6 @@ namespace PeterDB {
         // prepare new record to insert
         std::vector<bool> isNull = extractNullInformation(data, recordDescriptor);
         unsigned recordSize = getRecordSize(data, recordDescriptor, isNull);
-        const char* record = (char*)createRecordStream(data, recordDescriptor, isNull, recordSize);
 
         // find old record
         unsigned numberOfSlots, freeSpace;
@@ -325,7 +322,7 @@ namespace PeterDB {
 
         // if recordSize <= length, replace record then compact space,
         if (recordSize <= length) {
-            memcpy(page + offset, record, recordSize);
+            memcpy(page + offset, data, recordSize);
             memmove(page + offset + recordSize, page + offset + length, directoryEnd - (offset + recordSize));
             // adjust directory
             unsigned updatedRecordOffset = offset;
@@ -348,7 +345,7 @@ namespace PeterDB {
             // insert at the end of current page
             if (freeSpace >= recordSize) {
                 unsigned endOfRecords = directoryEnd - freeSpace;
-                memcpy(page + endOfRecords, record, recordSize);
+                memcpy(page + endOfRecords, data, recordSize);
                 freeSpace -= recordSize;
                 offset = endOfRecords;
             }
@@ -717,39 +714,6 @@ namespace PeterDB {
         return isNull;
     }
 
-    void *RecordBasedFileManager::createRecordStream(const void *data, const std::vector<Attribute> &recordDescriptor, const std::vector<bool> &isNull, unsigned &recordSize) {
-        unsigned nullIndicatorSize = (recordDescriptor.size() + 7) / 8; // Include size for null-indicator bytes
-        // Allocate memory for the new record stream
-        char *recordStream = new char[recordSize];
-        char *currentPointer = recordStream;
-
-        // Copy the null-indicator bytes
-        memcpy(currentPointer, (char*)data, nullIndicatorSize);
-        currentPointer += nullIndicatorSize;
-        char *dataPointer = (char*)data + nullIndicatorSize;
-        unsigned fieldSize = 0;
-        for (int i = 0; i < recordDescriptor.size(); ++i) {
-            if (!isNull[i]) {
-                if (recordDescriptor[i].type == TypeVarChar) {
-                    int varcharLength = 0;
-                    memcpy(&varcharLength, dataPointer, sizeof(int));
-                    fieldSize = sizeof(int) + varcharLength;
-                }
-                else if (recordDescriptor[i].type == TypeInt) {
-                    fieldSize = sizeof(int);
-                }
-                else if (recordDescriptor[i].type == TypeReal) {
-                    fieldSize = sizeof(float);
-                }
-                memcpy(currentPointer, dataPointer, fieldSize);
-                currentPointer += fieldSize;
-                dataPointer += fieldSize;
-            }
-            // No need for an else branch as NULL fields have no representation in the data stream
-        }
-        return recordStream;
-    }
-
     unsigned RecordBasedFileManager::getRecordSize(const void *data, const std::vector<Attribute> &recordDescriptor, std::vector<bool> &isNull) {
         const unsigned fieldSize = recordDescriptor.size();
         const unsigned nullIndicatorSize = (fieldSize + 7) / 8;
@@ -757,22 +721,22 @@ namespace PeterDB {
 
         const unsigned numSize = sizeof(unsigned);
         unsigned varcharLength;
-        data += nullIndicatorSize; // pointer arithmetic on the copy pointer
+        const char* dataPtr = static_cast<const char*>(data) + nullIndicatorSize;
 
         for (unsigned i = 0; i < fieldSize; i++) {
             if (!isNull[i]) {
                 switch (recordDescriptor[i].type) {
-                    // For VarChar, read the length, then add it along with the size of the length field itself
+                    // For VarChar, read the length, then add it to the size of the length field itself
                     case TypeVarChar: {
-                        varcharLength = *reinterpret_cast<const unsigned*>(data);
+                        varcharLength = *reinterpret_cast<const unsigned*>(dataPtr);
                         recordSize += numSize + varcharLength;
-                        data += numSize + varcharLength; // Move past this VarChar field
+                        dataPtr += numSize + varcharLength; // Move past this VarChar field
                         break;
                     }
                     case TypeInt:
                     case TypeReal:
                         recordSize += numSize;
-                        data += numSize; // Move past this Int or Real field
+                        dataPtr += numSize; // Move past this Int or Real field
                         break;
                 }
             }
