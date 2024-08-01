@@ -52,7 +52,7 @@ namespace PeterDB {
         const unsigned numPages = fileHandle.getNumberOfPages();
         int pageNum = static_cast<int>(numPages) - 1; // pageNum starts from 0
         bool read = false, inserted = false;
-        char* page = new char[PAGE_SIZE];
+        const auto page = new char[PAGE_SIZE]();
 
         while (!inserted) {
             // create and append a new page
@@ -80,8 +80,9 @@ namespace PeterDB {
                 bool canInsert = false;
                 // first look through available slots: slotNum start from 1
                 for (int i = 0; i < numberOfSlots; i++) {
-                    unsigned slotLength;
+                    unsigned short slotLength;
                     memcpy(&slotLength, page + directoryEnd + i * (SHORT_SIZE * 2) + SHORT_SIZE, SHORT_SIZE);
+                    //TODO: may not always be 0
                     if (slotLength == 0) {
                         slotToInsert = numberOfSlots - i;
                         break;
