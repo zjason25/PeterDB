@@ -49,7 +49,7 @@ namespace PeterDB {
         const unsigned recordSize = getRecordSize(data, recordDescriptor, isNull);
 
         unsigned numberOfSlots, freeSpace;
-        unsigned offset;
+        unsigned offset = 0; // offset to the start of the record, initialized at 0;
         const unsigned numPages = fileHandle.getNumberOfPages();
         int pageNum = static_cast<int>(numPages) - 1; // pageNum starts from 0
         bool read = false, inserted = false;
@@ -61,7 +61,6 @@ namespace PeterDB {
                 // pointer to the start of directory ( --> | ([offset_1][length_1]) | [N][F] )
                 const unsigned directory = PAGE_SIZE - 4 * sizeof(unsigned); // the left-most directory slot
                 memcpy(page, data, recordSize);
-                offset = 0; // pointer to the start of the record, initialized at 0;
                 numberOfSlots = 1;
                 freeSpace = PAGE_SIZE - recordSize - 4 * sizeof(unsigned);
                 memcpy(page + directory, &offset, sizeof(int)); // store offset
@@ -123,7 +122,6 @@ namespace PeterDB {
                     memcpy(page + PAGE_SIZE - sizeof(unsigned), &freeSpace, sizeof(unsigned));
                     fileHandle.writePage(pageNum, page);
                     inserted = true;
-
                 } else {
                     //if no enough space in last page, check first page
                     if (pageNum == (fileHandle.getNumberOfPages() - 1) && !read) {
@@ -133,10 +131,9 @@ namespace PeterDB {
                     else if ((pageNum == fileHandle.getNumberOfPages()) && read) {
                         unsigned directory = PAGE_SIZE - 4 * sizeof(unsigned); // the left-most directory slot
                         memcpy(page, data, recordSize);
-                        offset = 0; // pointer to the start of the record, initialized at 0;
                         numberOfSlots = 1;
                         freeSpace = PAGE_SIZE - recordSize - 4 * sizeof(unsigned);
-                        memcpy(page + directory, &offset, sizeof(unsigned)); // store offset
+                        memcpy(page + directory, &offset, sizeof(unsigned)); // store offset: 0
                         memcpy(page + directory + sizeof(unsigned), &recordSize,sizeof(unsigned));
                         memcpy(page + directory + 2 * sizeof(unsigned), &numberOfSlots, sizeof(unsigned));
                         memcpy(page + directory + 3 * sizeof(unsigned), &freeSpace, sizeof(unsigned));
