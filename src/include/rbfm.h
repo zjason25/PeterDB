@@ -7,6 +7,7 @@
 
 #include "pfm.h"
 #define NUM_SIZE sizeof(unsigned)
+#define SHORT_SIZE sizeof(unsigned short)
 
 namespace PeterDB {
     // Record ID
