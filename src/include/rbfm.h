@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "pfm.h"
+#define NUM_SIZE sizeof(unsigned)
 
 namespace PeterDB {
     // Record ID
