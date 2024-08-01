@@ -49,9 +49,9 @@ namespace PeterDB {
         const unsigned recordSize = getRecordSize(data, recordDescriptor, isNull);
 
         unsigned numberOfSlots, freeSpace;
-        unsigned offset, length;
-        unsigned numPages = fileHandle.getNumberOfPages();
-        int pageNum = (int)numPages - 1;
+        unsigned offset;
+        const unsigned numPages = fileHandle.getNumberOfPages();
+        int pageNum = static_cast<int>(numPages) - 1; // pageNum starts from 0
         bool read = false, inserted = false;
         char* page = new char[PAGE_SIZE];
 
@@ -59,14 +59,13 @@ namespace PeterDB {
             // create and append a new page
             if (numPages == 0) {
                 // pointer to the start of directory ( --> | ([offset_1][length_1]) | [N][F] )
-                unsigned directory = PAGE_SIZE - 4 * sizeof(unsigned); // the left-most directory slot
+                const unsigned directory = PAGE_SIZE - 4 * sizeof(unsigned); // the left-most directory slot
                 memcpy(page, data, recordSize);
                 offset = 0; // pointer to the start of the record, initialized at 0;
-                length = recordSize;
                 numberOfSlots = 1;
                 freeSpace = PAGE_SIZE - recordSize - 4 * sizeof(unsigned);
                 memcpy(page + directory, &offset, sizeof(int)); // store offset
-                memcpy(page + directory + sizeof(int), &length,sizeof(int));
+                memcpy(page + directory + sizeof(int), &recordSize,sizeof(int));
                 memcpy(page + directory + 2 * sizeof(unsigned), &numberOfSlots, sizeof(unsigned));
                 memcpy(page + directory + 3 * sizeof(unsigned), &freeSpace, sizeof(unsigned));
                 fileHandle.appendPage(page);
@@ -106,19 +105,18 @@ namespace PeterDB {
 
                     // prepare to update directory and slot
                     offset = endOfRecords; // offset of the new array is (offset + length) of previous array
-                    length = recordSize;
                     numberOfSlots += 1;
                     freeSpace -= (recordSize + 2 * sizeof(unsigned)); // record and slot
 
                     // update slot
                     if (slotToInsert != 0) {
                         memcpy(page + PAGE_SIZE - 2 * sizeof(unsigned) - slotToInsert * 2 * sizeof(unsigned), &offset, sizeof(int));
-                        memcpy(page + PAGE_SIZE - 2 * sizeof(unsigned) - slotToInsert * 2 * sizeof(unsigned) + sizeof(unsigned), &length, sizeof(int));
+                        memcpy(page + PAGE_SIZE - 2 * sizeof(unsigned) - slotToInsert * 2 * sizeof(unsigned) + sizeof(unsigned), &recordSize, sizeof(int));
                         rid.slotNum = slotToInsert;
                     }
                     else {
                         memcpy(page + directoryEnd - 2 * sizeof(unsigned), &offset, sizeof(int));
-                        memcpy(page + directoryEnd - sizeof(unsigned), &length, sizeof(int));
+                        memcpy(page + directoryEnd - sizeof(unsigned), &recordSize, sizeof(int));
                         rid.slotNum = numberOfSlots;
                     }
                     memcpy(page + PAGE_SIZE - 2 * sizeof(unsigned), &numberOfSlots, sizeof(unsigned));
@@ -136,11 +134,10 @@ namespace PeterDB {
                         unsigned directory = PAGE_SIZE - 4 * sizeof(unsigned); // the left-most directory slot
                         memcpy(page, data, recordSize);
                         offset = 0; // pointer to the start of the record, initialized at 0;
-                        length = recordSize;
                         numberOfSlots = 1;
                         freeSpace = PAGE_SIZE - recordSize - 4 * sizeof(unsigned);
                         memcpy(page + directory, &offset, sizeof(unsigned)); // store offset
-                        memcpy(page + directory + sizeof(unsigned), &length,sizeof(unsigned));
+                        memcpy(page + directory + sizeof(unsigned), &recordSize,sizeof(unsigned));
                         memcpy(page + directory + 2 * sizeof(unsigned), &numberOfSlots, sizeof(unsigned));
                         memcpy(page + directory + 3 * sizeof(unsigned), &freeSpace, sizeof(unsigned));
                         fileHandle.appendPage(page);
