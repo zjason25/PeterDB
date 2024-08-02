@@ -45,21 +45,21 @@ namespace PeterDB {
 
     RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                             const void *data, RID &rid) {
-        // Prepare null-fields indicator
+        // Calculate record size
         std::vector<bool> isNull = extractNullInformation(data, recordDescriptor);
         const auto recordSize = static_cast<unsigned short>(getRecordSize(data, recordDescriptor, isNull));
 
-        unsigned short numberOfSlots, freeSpace, offset = 0; // offset to the start of the record, initialized at 0;
+        unsigned short numberOfSlots, freeSpace, offset = 0;
         const unsigned numPages = fileHandle.getNumberOfPages();
         int pageNum = static_cast<int>(numPages) - 1; // pageNum starts from 0
         bool read = false, inserted = false;
         const std::unique_ptr<char[]> page(new char[PAGE_SIZE]);
 
+        // Find a page to insert record
         while (!inserted) {
-            // Create and append a new page
-            if (numPages == 0) {
-                // pointer to the start of directory ( --> | ([offset_1][length_1]) | [N][F] )
-                const unsigned directory = PAGE_SIZE - 2 * SLOT_SIZE; // the left-most directory slot
+            // Append a new page when no page exists or not enough space in existing pages
+            if (numPages == 0 || pageNum == fileHandle.getNumberOfPages() && read) {
+                const unsigned directory = PAGE_SIZE - 2 * SLOT_SIZE;
                 memcpy(page.get(), data, recordSize);
                 numberOfSlots = 1;
                 freeSpace = PAGE_SIZE - recordSize - 2 * SLOT_SIZE;
@@ -72,20 +72,23 @@ namespace PeterDB {
                 rid.slotNum = 1;
                 pageNum++;
             }
+            // Insert in an existing page
             else {
                 fileHandle.readPage(pageNum, page.get());
                 memcpy(&freeSpace, page.get() + PAGE_SIZE - SHORT_SIZE, SHORT_SIZE);
+
+                // Check for freeSpace in current page
                 if (freeSpace >= recordSize + SLOT_SIZE) {
                     memcpy(&numberOfSlots, page.get() + PAGE_SIZE - SLOT_SIZE, SHORT_SIZE);
                     const unsigned directoryEnd = PAGE_SIZE - SLOT_SIZE - numberOfSlots * SLOT_SIZE;
-                    // Insert record after the last byte array
+
+                    // Insert record right after the last byte array
                     const unsigned endOfRecords = directoryEnd - freeSpace;
                     memcpy(page.get() + endOfRecords, data, recordSize);
 
                     // Find an available slot
-                    // 1. Find a previously used empty slot from end -> start
                     unsigned slotToInsert = 0;
-                    auto dir = page.get() + directoryEnd;
+                    const auto dir = page.get() + directoryEnd;
                     for (int i = 0; i < numberOfSlots; i++) {
                         unsigned short slotLength;
                         memcpy(&slotLength, dir + i * SLOT_SIZE + SHORT_SIZE, SHORT_SIZE);
@@ -94,50 +97,34 @@ namespace PeterDB {
                             break;
                         }
                     }
-                    // Update directory
-                    offset = endOfRecords; // offset of the new array is (offset + length) of previous array
+                    // Update slot entry
+                    offset = endOfRecords;
                     numberOfSlots += 1;
-                    freeSpace -= recordSize; // update freeSpace
+                    freeSpace -= recordSize;
+
                     // If not re-using a slot, allocate space for a new slot
                     if (slotToInsert == 0) {
-                        freeSpace -= SLOT_SIZE;
-                    }
-
-                    // update slot
-                    if (slotToInsert != 0) {
+                        memcpy(page.get() + directoryEnd - 2 * SHORT_SIZE, &offset, SHORT_SIZE);
+                        memcpy(page.get() + directoryEnd - SHORT_SIZE, &recordSize, SHORT_SIZE);
+                        rid.slotNum = numberOfSlots;
+                        freeSpace -= SLOT_SIZE; // subtract space allocated for new slot
+                    } else {
                         memcpy(page.get() + PAGE_SIZE - SLOT_SIZE - slotToInsert * SLOT_SIZE, &offset, SHORT_SIZE);
                         memcpy(page.get() + PAGE_SIZE - SLOT_SIZE - slotToInsert * SLOT_SIZE + SHORT_SIZE, &recordSize, SHORT_SIZE);
                         rid.slotNum = slotToInsert;
                     }
-                    else {
-                        memcpy(page.get() + directoryEnd - 2 * SHORT_SIZE, &offset, SHORT_SIZE);
-                        memcpy(page.get() + directoryEnd - SHORT_SIZE, &recordSize, SHORT_SIZE);
-                        rid.slotNum = numberOfSlots;
-                    }
+
+                    // Update directory
                     memcpy(page.get() + PAGE_SIZE - 2 * SHORT_SIZE, &numberOfSlots, SHORT_SIZE);
                     memcpy(page.get() + PAGE_SIZE - SHORT_SIZE, &freeSpace, SHORT_SIZE);
                     fileHandle.writePage(pageNum, page.get());
                     inserted = true;
                 } else {
-                    //if no enough space in last page, check first page
-                    if (pageNum == (fileHandle.getNumberOfPages() - 1) && !read) {
+                    // If no enough space in last page, check first page
+                    if (pageNum == numPages - 1 && !read) {
                         pageNum = 0; // start from first page
                         read = true;
-                    } //no space in all pages, append a new page
-                    else if (pageNum == fileHandle.getNumberOfPages() && read) {
-                        const unsigned directory = PAGE_SIZE - 4 * SHORT_SIZE; // the left-most directory slot
-                        memcpy(page.get(), data, recordSize);
-                        numberOfSlots = 1;
-                        freeSpace = PAGE_SIZE - recordSize - 4 * SHORT_SIZE;
-                        memcpy(page.get() + directory, &offset, SHORT_SIZE); // store offset: 0
-                        memcpy(page.get() + directory + SHORT_SIZE, &recordSize,SHORT_SIZE);
-                        memcpy(page.get() + directory + 2 * SHORT_SIZE, &numberOfSlots, SHORT_SIZE);
-                        memcpy(page.get() + directory + 3 * SHORT_SIZE, &freeSpace, SHORT_SIZE);
-                        fileHandle.appendPage(page.get());
-                        inserted = true;
-                        rid.slotNum = 1;
-                    }
-                    else {
+                    } else {
                         pageNum++;
                     }
                 }
