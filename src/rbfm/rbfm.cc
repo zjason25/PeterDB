@@ -57,7 +57,7 @@ namespace PeterDB {
         // Find a page to insert record
         while (!inserted) {
             // Append a new page when no page exists or not enough space in existing pages
-            if (numPages == 0 || pageNum == fileHandle.getNumberOfPages() && read) {
+            if (numPages == 0 || pageNum == numPages - 1 && read) {
                 const unsigned directory = PAGE_SIZE - 2 * SLOT_SIZE;
                 memcpy(page.get(), data, recordSize);
                 numberOfSlots = 1;
@@ -120,7 +120,8 @@ namespace PeterDB {
                     inserted = true;
                 }
                 else {
-                    // If no enough space in last page, check first page
+                    // TODO: how to avoid redundant check in crowded pages
+                    // If no enough space in current page, check first page
                     if (pageNum == numPages - 1 && !read) {
                         pageNum = 0; // start from first page
                         read = true;
