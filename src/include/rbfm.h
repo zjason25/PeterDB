@@ -8,6 +8,7 @@
 #include "pfm.h"
 #define NUM_SIZE sizeof(unsigned)
 #define SHORT_SIZE sizeof(unsigned short)
+#define SLOT_SIZE (2 * SHORT_SIZE) // One slot has 2 entries: [offset][length]
 
 namespace PeterDB {
     // Record ID
