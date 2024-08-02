@@ -2,7 +2,6 @@
 
 #include <cstdio>
 #include <cstring>
-#include <cmath>
 #include <iostream>
 #include <sstream>
 #include <algorithm>
@@ -119,7 +118,8 @@ namespace PeterDB {
                     memcpy(page.get() + PAGE_SIZE - SHORT_SIZE, &freeSpace, SHORT_SIZE);
                     fileHandle.writePage(pageNum, page.get());
                     inserted = true;
-                } else {
+                }
+                else {
                     // If no enough space in last page, check first page
                     if (pageNum == numPages - 1 && !read) {
                         pageNum = 0; // start from first page
@@ -139,16 +139,16 @@ namespace PeterDB {
         char* page = new char[PAGE_SIZE];
         fileHandle.readPage(rid.pageNum, page);
         unsigned short offset, length;
-        memcpy(&offset, page + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE), SHORT_SIZE);
-        memcpy(&length, page + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE + SHORT_SIZE), SHORT_SIZE);
+        memcpy(&offset, page + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * SLOT_SIZE), SHORT_SIZE);
+        memcpy(&length, page + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * SLOT_SIZE + SHORT_SIZE), SHORT_SIZE);
 
         // read from a tombstone
         if (length >= TOMBSTONE_MARKER) {
             unsigned pageNum = offset - TOMBSTONE_MARKER;
             unsigned slotNum = length - TOMBSTONE_MARKER;
             fileHandle.readPage(pageNum, page);
-            memcpy(&offset, page + (PAGE_SIZE - 2 * SHORT_SIZE - slotNum * 2 * SHORT_SIZE), SHORT_SIZE);
-            memcpy(&length, page + (PAGE_SIZE - 2 * SHORT_SIZE - slotNum * 2 * SHORT_SIZE + SHORT_SIZE), SHORT_SIZE);
+            memcpy(&offset, page + (PAGE_SIZE - 2 * SHORT_SIZE - slotNum * SLOT_SIZE), SHORT_SIZE);
+            memcpy(&length, page + (PAGE_SIZE - 2 * SHORT_SIZE - slotNum * SLOT_SIZE + SHORT_SIZE), SHORT_SIZE);
             memcpy(data, page + offset, length);
             delete[] page;
             return 0;
