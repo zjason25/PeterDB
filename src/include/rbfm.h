@@ -101,8 +101,8 @@ namespace PeterDB {
     };
 
     struct PageInfo {
-        unsigned short freeSpace;
         int pageNum;
+        unsigned short freeSpace;
 
         bool operator<(const PageInfo &other) const {
             return freeSpace < other.freeSpace; //
@@ -112,6 +112,11 @@ namespace PeterDB {
     class RecordBasedFileManager {
     public:
         static RecordBasedFileManager &instance();                          // Access to the singleton instance
+        void reset() {
+            while (!freeSpaceHeap.empty()) {
+                freeSpaceHeap.pop();
+            }
+        }
 
         RC createFile(const std::string &fileName);                         // Create a new record-based file
         RC destroyFile(const std::string &fileName);                        // Destroy a record-based file
@@ -181,8 +186,8 @@ namespace PeterDB {
     private:
         std::priority_queue<PageInfo> freeSpaceHeap;
 
-        void updateFreeSpace(int pageNum, unsigned short newFreeSpace);
         void addPageToHeap(int pageNum, unsigned short freeSpace);
+        void updateHeap(int pageNum, unsigned short newFreeSpace);
 
     protected:
         RecordBasedFileManager();                                                   // Prevent construction
