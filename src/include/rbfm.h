@@ -4,6 +4,7 @@
 #define TOMBSTONE_MARKER 4096
 
 #include <vector>
+#include <queue>
 
 #include "pfm.h"
 #define NUM_SIZE sizeof(unsigned)
@@ -99,6 +100,15 @@ namespace PeterDB {
 
     };
 
+    struct PageInfo {
+        unsigned short freeSpace;
+        int pageNum;
+
+        bool operator<(const PageInfo &other) const {
+            return freeSpace < other.freeSpace; //
+        }
+    };
+
     class RecordBasedFileManager {
     public:
         static RecordBasedFileManager &instance();                          // Access to the singleton instance
@@ -168,6 +178,11 @@ namespace PeterDB {
         unsigned getRecordSize(const void *data, const std::vector<Attribute> &recordDescriptor, std::vector<bool> &isNull);
         unsigned getTotalSlots(void *data);
 
+    private:
+        std::priority_queue<PageInfo> freeSpaceHeap;
+
+        void updateFreeSpace(int pageNum, unsigned short newFreeSpace);
+        void addPageToHeap(int pageNum, unsigned short freeSpace);
 
     protected:
         RecordBasedFileManager();                                                   // Prevent construction

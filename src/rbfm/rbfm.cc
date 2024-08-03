@@ -42,6 +42,17 @@ namespace PeterDB {
         return pfm.closeFile(fileHandle);
     }
 
+    void RecordBasedFileManager::updateFreeSpace(int pageNum, unsigned short newFreeSpace) {
+        // Remove old entry
+        freeSpaceHeap.pop();
+        // Add updated entry
+        addPageToHeap(pageNum, newFreeSpace);
+    }
+
+    void RecordBasedFileManager::addPageToHeap(int pageNum, unsigned short freeSpace) {
+        freeSpaceHeap.push({freeSpace, pageNum});
+    }
+
     RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                             const void *data, RID &rid) {
         // Calculate record size
@@ -70,9 +81,11 @@ namespace PeterDB {
                 inserted = true;
                 rid.slotNum = 1;
                 pageNum++;
+                addPageToHeap(pageNum, freeSpace);
             }
             // Insert in an existing page
             else {
+                freeSpace = freeSpaceHeap.top().freeSpace;
                 fileHandle.readPage(pageNum, page.get());
                 memcpy(&freeSpace, page.get() + PAGE_SIZE - SHORT_SIZE, SHORT_SIZE);
 
@@ -98,13 +111,13 @@ namespace PeterDB {
                     }
                     // Update slot entry
                     offset = endOfRecords;
-                    numberOfSlots += 1;
                     freeSpace -= recordSize;
 
                     // If not re-using a slot, allocate space for a new slot
                     if (slotToInsert == 0) {
-                        memcpy(page.get() + directoryEnd - 2 * SHORT_SIZE, &offset, SHORT_SIZE);
+                        memcpy(page.get() + directoryEnd - SLOT_SIZE, &offset, SHORT_SIZE);
                         memcpy(page.get() + directoryEnd - SHORT_SIZE, &recordSize, SHORT_SIZE);
+                        numberOfSlots += 1;
                         rid.slotNum = numberOfSlots;
                         freeSpace -= SLOT_SIZE; // subtract space allocated for new slot
                     } else {
@@ -114,7 +127,7 @@ namespace PeterDB {
                     }
 
                     // Update directory
-                    memcpy(page.get() + PAGE_SIZE - 2 * SHORT_SIZE, &numberOfSlots, SHORT_SIZE);
+                    memcpy(page.get() + PAGE_SIZE - SLOT_SIZE, &numberOfSlots, SHORT_SIZE);
                     memcpy(page.get() + PAGE_SIZE - SHORT_SIZE, &freeSpace, SHORT_SIZE);
                     fileHandle.writePage(pageNum, page.get());
                     inserted = true;
