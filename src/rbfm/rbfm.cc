@@ -61,7 +61,8 @@ namespace PeterDB {
 
         unsigned short numberOfSlots, freeSpace, offset = 0;
         unsigned short pageFreeSpace = 0;
-        int pageNum = -1; // pageNum starts from 0
+        const unsigned numPages = fileHandle.getNumberOfPages();
+        int pageNum = -1;
         const std::unique_ptr<char[]> page(new char[PAGE_SIZE]);
 
         if (!freeSpaceHeap.empty() && freeSpaceHeap.top().freeSpace >= requiredSpace) {
@@ -70,7 +71,7 @@ namespace PeterDB {
             pageFreeSpace = pi.freeSpace;
         }
         // TODO: freeSpace somehow is more than directory end
-        if (pageNum == -1) {
+        if (numPages == 0 || pageNum == -1) {
             const unsigned directory = PAGE_SIZE - 2 * SLOT_SIZE;
             numberOfSlots = 1;
             freeSpace = PAGE_SIZE - recordSize - 2 * SLOT_SIZE;
@@ -81,7 +82,11 @@ namespace PeterDB {
             memcpy(page.get() + directory + 3 * SHORT_SIZE, &freeSpace, SHORT_SIZE);
             fileHandle.appendPage(page.get());
             rid.slotNum = 1;
-            pageNum++;
+            if (numPages == 0) {
+                pageNum = 0; // pageNum starts from 0
+            } else {
+                pageNum = static_cast<int>(numPages);
+            }
             addPageToHeap(pageNum, freeSpace);
         }
         // Insert in an existing page
