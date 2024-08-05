@@ -43,13 +43,13 @@ namespace PeterDB {
         return pfm.closeFile(fileHandle);
     }
 
-    void RecordBasedFileManager::updateHeap(const int pageNum, const unsigned short newFreeSpace) {
-        freeSpaceHeap.pop();
-        addPageToHeap(pageNum, newFreeSpace);
+    void RecordBasedFileManager::updateHeap(FileHandle &fileHandle, int pageNum, unsigned short newFreeSpace) {
+        fileHeapMap[&fileHandle].pop();
+        addPageToHeap(fileHandle, pageNum, newFreeSpace);
     }
 
-    void RecordBasedFileManager::addPageToHeap(const int pageNum, const unsigned short freeSpace) {
-        freeSpaceHeap.push({pageNum, freeSpace});
+    void RecordBasedFileManager::addPageToHeap(FileHandle &fileHandle, int pageNum, unsigned short freeSpace) {
+        fileHeapMap[&fileHandle].push(PageInfo{pageNum, freeSpace});
     }
 
     RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
@@ -65,8 +65,8 @@ namespace PeterDB {
         int pageNum = -1;
         const std::unique_ptr<char[]> page(new char[PAGE_SIZE]);
 
-        if (!freeSpaceHeap.empty() && freeSpaceHeap.top().freeSpace >= requiredSpace) {
-            PageInfo pi = freeSpaceHeap.top();
+        if (!fileHeapMap[&fileHandle].empty() && fileHeapMap[&fileHandle].top().freeSpace >= requiredSpace) {
+            PageInfo pi = fileHeapMap[&fileHandle].top();
             pageNum = pi.pageNum;
             pageFreeSpace = pi.freeSpace;
         }
@@ -82,12 +82,8 @@ namespace PeterDB {
             memcpy(page.get() + directory + 3 * SHORT_SIZE, &freeSpace, SHORT_SIZE);
             fileHandle.appendPage(page.get());
             rid.slotNum = 1;
-            if (numPages == 0) {
-                pageNum = 0; // pageNum starts from 0
-            } else {
-                pageNum = static_cast<int>(numPages);
-            }
-            addPageToHeap(pageNum, freeSpace);
+            pageNum = (numPages == 0) ? 0 : static_cast<int>(numPages);
+            addPageToHeap(fileHandle, pageNum, freeSpace);
         }
         // Insert in an existing page
         else {
@@ -132,7 +128,7 @@ namespace PeterDB {
             memcpy(page.get() + PAGE_SIZE - SLOT_SIZE, &numberOfSlots, SHORT_SIZE);
             memcpy(page.get() + PAGE_SIZE - SHORT_SIZE, &pageFreeSpace, SHORT_SIZE);
             fileHandle.writePage(pageNum, page.get());
-            updateHeap(pageNum, pageFreeSpace);
+            updateHeap(fileHandle, pageNum, pageFreeSpace);
         }
 
         rid.pageNum = pageNum;

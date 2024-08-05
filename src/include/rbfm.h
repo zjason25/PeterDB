@@ -5,6 +5,7 @@
 
 #include <vector>
 #include <queue>
+#include <map>
 
 #include "pfm.h"
 #define NUM_SIZE sizeof(unsigned)
@@ -113,9 +114,7 @@ namespace PeterDB {
     public:
         static RecordBasedFileManager &instance();                          // Access to the singleton instance
         void reset() {
-            while (!freeSpaceHeap.empty()) {
-                freeSpaceHeap.pop();
-            }
+            fileHeapMap.clear();
         }
 
         RC createFile(const std::string &fileName);                         // Create a new record-based file
@@ -184,10 +183,10 @@ namespace PeterDB {
         unsigned getTotalSlots(void *data);
 
     private:
-        std::priority_queue<PageInfo> freeSpaceHeap;
+        std::map<FileHandle*, std::priority_queue<PageInfo>> fileHeapMap;
 
-        void addPageToHeap(int pageNum, unsigned short freeSpace);
-        void updateHeap(int pageNum, unsigned short newFreeSpace);
+        void addPageToHeap(FileHandle &fileHandle, int pageNum, unsigned short freeSpace);
+        void updateHeap(FileHandle &fileHandle, int pageNum, unsigned short freeSpace);
 
     protected:
         RecordBasedFileManager();                                                   // Prevent construction
