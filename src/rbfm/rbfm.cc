@@ -43,12 +43,12 @@ namespace PeterDB {
         return pfm.closeFile(fileHandle);
     }
 
-    void RecordBasedFileManager::updateHeap(FileHandle &fileHandle, int pageNum, unsigned short newFreeSpace) {
+    void RecordBasedFileManager::updateHeap(FileHandle &fileHandle, const int &pageNum, const unsigned short &newFreeSpace) {
         fileHeapMap[&fileHandle].pop();
         addPageToHeap(fileHandle, pageNum, newFreeSpace);
     }
 
-    void RecordBasedFileManager::addPageToHeap(FileHandle &fileHandle, int pageNum, unsigned short freeSpace) {
+    void RecordBasedFileManager::addPageToHeap(FileHandle &fileHandle, const int &pageNum, const unsigned short &freeSpace) {
         fileHeapMap[&fileHandle].push(PageInfo{pageNum, freeSpace});
     }
 
@@ -67,7 +67,7 @@ namespace PeterDB {
 
         // Locate largest available space on heap
         if (!fileHeapMap[&fileHandle].empty() && fileHeapMap[&fileHandle].top().freeSpace >= requiredSpace) {
-            PageInfo pi = fileHeapMap[&fileHandle].top();
+            const PageInfo pi = fileHeapMap[&fileHandle].top();
             pageNum = pi.pageNum;
             pageFreeSpace = pi.freeSpace;
         }
@@ -172,36 +172,46 @@ namespace PeterDB {
     RC RecordBasedFileManager::printRecord(const std::vector<Attribute> &recordDescriptor, const void *data,
                                            std::ostream &out) {
         std::vector<bool> isNull = extractNullInformation(data, recordDescriptor);
-        unsigned fieldSize = recordDescriptor.size();
-        unsigned nullIndicatorSize = (recordDescriptor.size() + 7) / 8;
-        const char* charData = static_cast<const char*>(data); // for string bytes reading
-        charData += nullIndicatorSize;
+        const unsigned fieldSize = recordDescriptor.size();
+        const unsigned nullIndicatorSize = (recordDescriptor.size() + 7) / 8;
+        auto charData = static_cast<const char*>(data); // cast to char for reading
+        charData += nullIndicatorSize; // Move dataPtr past null indicator
 
         unsigned linebreak = 1;
 
-        std::string name;
         int num;
         float real;
+
         for (int i = 0; i < recordDescriptor.size(); ++i) {
-            name = recordDescriptor[i].name;
+            std::string name = recordDescriptor[i].name;
+
             if (!isNull[i]) {
-                if (recordDescriptor[i].type == TypeVarChar) {
-                    int varcharLength = 0;
-                    memcpy(&varcharLength, charData, sizeof(int));
-                    std::string str(charData + sizeof(int), varcharLength);
-                    out << name + ": " << str;
-                    charData += sizeof(int) + varcharLength;
-                } else if (recordDescriptor[i].type == TypeInt) {
-                        memcpy(&num, charData, sizeof(int));
+                switch (recordDescriptor[i].type) {
+                    case TypeVarChar: {
+                        int varcharLength = 0;
+                        memcpy(&varcharLength, charData, NUM_SIZE); // Copy varchar length
+                        std::string str(charData + NUM_SIZE, varcharLength);
+                        out << name + ": " << str;
+                        charData += varcharLength; // Move charData pointer past varChar
+                        break;
+                    }
+                    case TypeInt: {
+                        memcpy(&num, charData, NUM_SIZE); // Copy int value
                         out << name + ": " << num;
-                        charData += sizeof(int);
-                } else if (recordDescriptor[i].type == TypeReal) {
-                    memcpy(&real, charData, sizeof(float));
-                    out << name + ": " << real;
-                    charData += sizeof(float);
+                        break;
+                    }
+                    case TypeReal: {
+                        memcpy(&real, charData, NUM_SIZE); // Copy float value
+                        out << name + ": " << real;
+                        break;
+                    }
                 }
+                charData += NUM_SIZE; // Move charData pointer
+            } else {
+                out << name << ": NULL"; // Handle null fields
             }
-            else {out << name << ": NULL";}
+
+            // Format output with commas and new lines
             if (linebreak % fieldSize != 0) {
                 out << ", ";
                 linebreak++;
@@ -210,7 +220,9 @@ namespace PeterDB {
                 linebreak = 1;
             }
         }
+
         return 0;
+
     }
 
     RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
@@ -680,14 +692,14 @@ namespace PeterDB {
 
 
     std::vector<bool> RecordBasedFileManager::extractNullInformation(const void *data, const std::vector<Attribute> &recordDescriptor) {
-        unsigned fieldSize = recordDescriptor.size();
-        const char *nullsIndicator = static_cast<const char*>(data);
+        const unsigned fieldSize = recordDescriptor.size();
+        const auto nullsIndicator = static_cast<const char*>(data);
 
         std::vector<bool> isNull(fieldSize, false);
         for (int i = 0; i < fieldSize; ++i) {
-            int byteIndex = i / 8;
-            int bitIndex = i % 8;
-            unsigned char mask = 1 << (7 - bitIndex);
+            const int byteIndex = i / 8;
+            const int bitIndex = i % 8;
+            const unsigned char mask = 1 << (7 - bitIndex);
             if (nullsIndicator[byteIndex] & mask) {
                 isNull[i] = true;
             }
@@ -700,7 +712,6 @@ namespace PeterDB {
         const unsigned nullIndicatorSize = (fieldSize + 7) / 8;
         unsigned recordSize = nullIndicatorSize; // Start with the size of the null indicator (in number of bytes)
 
-        unsigned varcharLength;
         const char* dataPtr = static_cast<const char*>(data) + nullIndicatorSize;
 
         for (unsigned i = 0; i < fieldSize; i++) {
@@ -708,7 +719,7 @@ namespace PeterDB {
                 switch (recordDescriptor[i].type) {
                     // For VarChar, read the length, then add it to the size of the length field itself
                     case TypeVarChar: {
-                        varcharLength = *reinterpret_cast<const unsigned*>(dataPtr);
+                        const unsigned varcharLength = *reinterpret_cast<const unsigned*>(dataPtr);
                         recordSize += NUM_SIZE + varcharLength;
                         dataPtr += NUM_SIZE + varcharLength; // Move past this VarChar field
                         break;

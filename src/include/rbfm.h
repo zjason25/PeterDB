@@ -185,8 +185,8 @@ namespace PeterDB {
     private:
         std::map<FileHandle*, std::priority_queue<PageInfo>> fileHeapMap;
 
-        void addPageToHeap(FileHandle &fileHandle, int pageNum, unsigned short freeSpace);
-        void updateHeap(FileHandle &fileHandle, int pageNum, unsigned short freeSpace);
+        void addPageToHeap(FileHandle &fileHandle, const int &pageNum, const unsigned short &freeSpace);
+        void updateHeap(FileHandle &fileHandle, const int &pageNum, const unsigned short &freeSpace);
 
     protected:
         RecordBasedFileManager();                                                   // Prevent construction
