@@ -65,12 +65,14 @@ namespace PeterDB {
         int pageNum = -1;
         const std::unique_ptr<char[]> page(new char[PAGE_SIZE]);
 
+        // Locate largest available space on heap
         if (!fileHeapMap[&fileHandle].empty() && fileHeapMap[&fileHandle].top().freeSpace >= requiredSpace) {
             PageInfo pi = fileHeapMap[&fileHandle].top();
             pageNum = pi.pageNum;
             pageFreeSpace = pi.freeSpace;
         }
-        // TODO: freeSpace somehow is more than directory end
+
+        // Create and insert in new page
         if (numPages == 0 || pageNum == -1) {
             const unsigned directory = PAGE_SIZE - 2 * SLOT_SIZE;
             numberOfSlots = 1;
@@ -137,30 +139,33 @@ namespace PeterDB {
 
     RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                           const RID &rid, void *data) {
-        char* page = new char[PAGE_SIZE];
-        fileHandle.readPage(rid.pageNum, page);
-        unsigned short offset, length;
-        memcpy(&offset, page + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * SLOT_SIZE), SHORT_SIZE);
-        memcpy(&length, page + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * SLOT_SIZE + SHORT_SIZE), SHORT_SIZE);
+        // Read page
+        const std::unique_ptr<char[]> page(new char[PAGE_SIZE]);
+        fileHandle.readPage(rid.pageNum, page.get());
 
-        // read from a tombstone
+        // Locate record
+        unsigned short offset, length;
+        memcpy(&offset, page.get() + (PAGE_SIZE - SLOT_SIZE - rid.slotNum * SLOT_SIZE), SHORT_SIZE);
+        memcpy(&length, page.get() + (PAGE_SIZE - SLOT_SIZE - rid.slotNum * SLOT_SIZE + SHORT_SIZE), SHORT_SIZE);
+
+        // Read from a tombstone
         if (length >= TOMBSTONE_MARKER) {
-            unsigned pageNum = offset - TOMBSTONE_MARKER;
-            unsigned slotNum = length - TOMBSTONE_MARKER;
-            fileHandle.readPage(pageNum, page);
-            memcpy(&offset, page + (PAGE_SIZE - 2 * SHORT_SIZE - slotNum * SLOT_SIZE), SHORT_SIZE);
-            memcpy(&length, page + (PAGE_SIZE - 2 * SHORT_SIZE - slotNum * SLOT_SIZE + SHORT_SIZE), SHORT_SIZE);
-            memcpy(data, page + offset, length);
-            delete[] page;
+            const unsigned pageNum = offset - TOMBSTONE_MARKER;
+            const unsigned slotNum = length - TOMBSTONE_MARKER;
+            fileHandle.readPage(pageNum, page.get());
+            memcpy(&offset, page.get() + (PAGE_SIZE - 2 * SHORT_SIZE - slotNum * SLOT_SIZE), SHORT_SIZE);
+            memcpy(&length, page.get() + (PAGE_SIZE - 2 * SHORT_SIZE - slotNum * SLOT_SIZE + SHORT_SIZE), SHORT_SIZE);
+            memcpy(data, page.get() + offset, length);
             return 0;
         }
-        // if a record was deleted, slot will have 0
+
+        // If a record was deleted, slot will have 0
         if (length == 0) {
             return -1;
         }
 
-        memcpy(data, page + offset, length);
-        delete[] page;
+        // Read record into data
+        memcpy(data, page.get() + offset, length);
         return 0;
     }
 
