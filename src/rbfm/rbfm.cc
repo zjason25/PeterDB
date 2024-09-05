@@ -157,8 +157,7 @@ namespace PeterDB {
             RID rid_t;
             rid_t.pageNum = offset - TOMBSTONE_MARKER;
             rid_t.slotNum = length - TOMBSTONE_MARKER;
-            readRecord(fileHandle, recordDescriptor, rid_t, data);
-            return 0;
+            return readRecord(fileHandle, recordDescriptor, rid_t, data);
         }
 
         // Read record into data
@@ -238,26 +237,19 @@ namespace PeterDB {
             RID rid_t;
             rid_t.pageNum = offset - TOMBSTONE_MARKER;
             rid_t.slotNum = length - TOMBSTONE_MARKER;
-            deleteRecord(fileHandle, recordDescriptor, rid_t);
-            offset = 0;
-            length = 0;
-            memcpy(page.get() + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE), &offset, SHORT_SIZE);
-            memcpy(page.get() + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE + SHORT_SIZE), &length, SHORT_SIZE);
-            fileHandle.writePage(rid.pageNum, page.get());
-            return 0;
+            return deleteRecord(fileHandle, recordDescriptor, rid_t);
         }
 
-        // find directoryStart: the furthest left the directory goes
         unsigned short numberOfSlots, freeSpace;
         memcpy(&numberOfSlots, page.get() + PAGE_SIZE - 2 * SHORT_SIZE, SHORT_SIZE);
         memcpy(&freeSpace, page.get() + PAGE_SIZE - 1 * SHORT_SIZE, SHORT_SIZE);
 
-        // delete record
+        // Delete record
         const unsigned directoryEnd = PAGE_SIZE - 2 * SHORT_SIZE - numberOfSlots * 2 * SHORT_SIZE;
         const unsigned shiftSize = directoryEnd - (offset + length);
         memmove(page.get() + offset, page.get() + offset + length, shiftSize);
 
-        // update directory
+        // Update directory
         const unsigned short recordToDeleteOffset = offset;
         const unsigned short recordToDeleteLength = length;
         char* dirPtr = page.get() + directoryEnd;
