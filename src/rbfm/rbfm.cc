@@ -147,18 +147,23 @@ namespace PeterDB {
         memcpy(&offset, page.get() + (PAGE_SIZE - SLOT_SIZE - rid.slotNum * SLOT_SIZE), SHORT_SIZE);
         memcpy(&length, page.get() + (PAGE_SIZE - SLOT_SIZE - rid.slotNum * SLOT_SIZE + SHORT_SIZE), SHORT_SIZE);
 
-        // Read from a tombstone
-        if (length >= TOMBSTONE_MARKER) {
-            const unsigned pageNum = offset - TOMBSTONE_MARKER;
-            const unsigned slotNum = length - TOMBSTONE_MARKER;
-            fileHandle.readPage(pageNum, page.get());
-            memcpy(&offset, page.get() + (PAGE_SIZE - 2 * SHORT_SIZE - slotNum * SLOT_SIZE), SHORT_SIZE);
-            memcpy(&length, page.get() + (PAGE_SIZE - 2 * SHORT_SIZE - slotNum * SLOT_SIZE + SHORT_SIZE), SHORT_SIZE);
-        }
-
-        // If a record was deleted, slot will have 0
+        // Reading a non-existent record returns error
         if (length == 0) {
             return -1;
+        }
+
+        // Read from a tombstone
+        if (length >= TOMBSTONE_MARKER) {
+            RID rid_t;
+            rid_t.pageNum = offset - TOMBSTONE_MARKER;
+            rid_t.slotNum = length - TOMBSTONE_MARKER;
+            readRecord(fileHandle, recordDescriptor, rid_t, data);
+            // const unsigned pageNum = offset - TOMBSTONE_MARKER;
+            // const unsigned slotNum = length - TOMBSTONE_MARKER;
+            // fileHandle.readPage(pageNum, page.get());
+            // memcpy(&offset, page.get() + (PAGE_SIZE - 2 * SHORT_SIZE - slotNum * SLOT_SIZE), SHORT_SIZE);
+            // memcpy(&length, page.get() + (PAGE_SIZE - 2 * SHORT_SIZE - slotNum * SLOT_SIZE + SHORT_SIZE), SHORT_SIZE);
+            return 0;
         }
 
         // Read record into data
@@ -221,13 +226,19 @@ namespace PeterDB {
 
     RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                             const RID &rid) {
-        // read page and get record offset and length
+        // Read page and get record offset and length
         const std::unique_ptr<char[]> page(new char[PAGE_SIZE]);
         fileHandle.readPage(rid.pageNum, page.get());
         unsigned short offset, length;
         memcpy(&offset, page.get() + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE), SHORT_SIZE);
         memcpy(&length, page.get() + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE + SHORT_SIZE), SHORT_SIZE);
-        // deleting a non-existent record returns error
+
+        // Deleting a non-existent record returns error
+        if (length == 0) {
+            return -1;
+        }
+
+        // Deleting a tombstone record
         if (length >= TOMBSTONE_MARKER) {
             RID rid_t;
             rid_t.pageNum = offset - TOMBSTONE_MARKER;
@@ -239,9 +250,6 @@ namespace PeterDB {
             memcpy(page.get() + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE + SHORT_SIZE), &length, SHORT_SIZE);
             fileHandle.writePage(rid.pageNum, page.get());
             return 0;
-        }
-        if (length == 0) {
-            return -1;
         }
 
         // find directoryStart: the furthest left the directory goes
