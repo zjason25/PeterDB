@@ -179,7 +179,7 @@ namespace PeterDB {
         int num;
         float real;
 
-        for (int i = 0; i < recordDescriptor.size(); ++i) {
+        for (int i = 0; i < fieldSize; ++i) {
             std::string name = recordDescriptor[i].name;
 
             if (!isNull[i]) {
@@ -207,7 +207,6 @@ namespace PeterDB {
             } else {
                 out << name << ": NULL"; // Handle null fields
             }
-
             // Format output with commas and new lines
             if (linebreak % fieldSize != 0) {
                 out << ", ";
@@ -217,19 +216,17 @@ namespace PeterDB {
                 linebreak = 1;
             }
         }
-
         return 0;
-
     }
 
     RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                             const RID &rid) {
         // read page and get record offset and length
-        char* page = new char[PAGE_SIZE];
-        fileHandle.readPage(rid.pageNum, page);
+        const std::unique_ptr<char[]> page(new char[PAGE_SIZE]);
+        fileHandle.readPage(rid.pageNum, page.get());
         unsigned short offset, length;
-        memcpy(&offset, page + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE), SHORT_SIZE);
-        memcpy(&length, page + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE + SHORT_SIZE), SHORT_SIZE);
+        memcpy(&offset, page.get() + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE), SHORT_SIZE);
+        memcpy(&length, page.get() + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE + SHORT_SIZE), SHORT_SIZE);
         // deleting a non-existent record returns error
         if (length >= TOMBSTONE_MARKER) {
             RID rid_t;
@@ -238,9 +235,9 @@ namespace PeterDB {
             deleteRecord(fileHandle, recordDescriptor, rid_t);
             offset = 0;
             length = 0;
-            memcpy(page + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE), &offset, SHORT_SIZE);
-            memcpy(page + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE + SHORT_SIZE), &length, SHORT_SIZE);
-            fileHandle.writePage(rid.pageNum, page);
+            memcpy(page.get() + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE), &offset, SHORT_SIZE);
+            memcpy(page.get() + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE + SHORT_SIZE), &length, SHORT_SIZE);
+            fileHandle.writePage(rid.pageNum, page.get());
             return 0;
         }
         if (length == 0) {
@@ -249,18 +246,18 @@ namespace PeterDB {
 
         // find directoryStart: the furthest left the directory goes
         unsigned short numberOfSlots, freeSpace;
-        memcpy(&numberOfSlots, page + PAGE_SIZE - 2 * SHORT_SIZE, SHORT_SIZE);
-        memcpy(&freeSpace, page + PAGE_SIZE - 1 * SHORT_SIZE, SHORT_SIZE);
+        memcpy(&numberOfSlots, page.get() + PAGE_SIZE - 2 * SHORT_SIZE, SHORT_SIZE);
+        memcpy(&freeSpace, page.get() + PAGE_SIZE - 1 * SHORT_SIZE, SHORT_SIZE);
 
         // delete record
-        unsigned directoryEnd = PAGE_SIZE - 2 * SHORT_SIZE - numberOfSlots * 2 * SHORT_SIZE;
-        unsigned shiftSize = directoryEnd - (offset + length);
-        memmove(page + offset, page + offset + length, shiftSize);
+        const unsigned directoryEnd = PAGE_SIZE - 2 * SHORT_SIZE - numberOfSlots * 2 * SHORT_SIZE;
+        const unsigned shiftSize = directoryEnd - (offset + length);
+        memmove(page.get() + offset, page.get() + offset + length, shiftSize);
 
         // update directory
-        unsigned short recordToDeleteOffset = offset;
-        unsigned short recordToDeleteLength = length;
-        char* dirPtr = page + directoryEnd;
+        const unsigned short recordToDeleteOffset = offset;
+        const unsigned short recordToDeleteLength = length;
+        char* dirPtr = page.get() + directoryEnd;
         for (int i = 0; i < numberOfSlots; i++) {
             unsigned slotOffset;
             memcpy(&slotOffset, dirPtr + i * (SHORT_SIZE * 2), SHORT_SIZE);
@@ -275,14 +272,13 @@ namespace PeterDB {
         offset = 0;
         length = 0;
 
-        memcpy(page + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE), &offset, SHORT_SIZE);
-        memcpy(page + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE + SHORT_SIZE), &length, SHORT_SIZE);
-        memcpy(page + PAGE_SIZE - 2 * SHORT_SIZE, &numberOfSlots, SHORT_SIZE);
-        memcpy(page + PAGE_SIZE - 1 * SHORT_SIZE, &freeSpace, SHORT_SIZE);
+        memcpy(page.get() + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE), &offset, SHORT_SIZE);
+        memcpy(page.get() + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE + SHORT_SIZE), &length, SHORT_SIZE);
+        memcpy(page.get() + PAGE_SIZE - 2 * SHORT_SIZE, &numberOfSlots, SHORT_SIZE);
+        memcpy(page.get() + PAGE_SIZE - 1 * SHORT_SIZE, &freeSpace, SHORT_SIZE);
 
-        fileHandle.writePage(rid.pageNum, page);
+        fileHandle.writePage(rid.pageNum, page.get());
 
-        delete[] page;
         return 0;
     }
 
