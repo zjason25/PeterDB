@@ -240,11 +240,12 @@ namespace PeterDB {
             return deleteRecord(fileHandle, recordDescriptor, rid_t);
         }
 
+        // Find directory
         unsigned short numberOfSlots, freeSpace;
         memcpy(&numberOfSlots, page.get() + PAGE_SIZE - 2 * SHORT_SIZE, SHORT_SIZE);
         memcpy(&freeSpace, page.get() + PAGE_SIZE - 1 * SHORT_SIZE, SHORT_SIZE);
 
-        // Delete record
+        // Move everything after the record and before the directory to overwrite the record
         const unsigned directoryEnd = PAGE_SIZE - 2 * SHORT_SIZE - numberOfSlots * 2 * SHORT_SIZE;
         const unsigned shiftSize = directoryEnd - (offset + length);
         memmove(page.get() + offset, page.get() + offset + length, shiftSize);
