@@ -273,8 +273,8 @@ namespace PeterDB {
         memcpy(page.get() + PAGE_SIZE - 2 * SHORT_SIZE, &numberOfSlots, SHORT_SIZE);
         memcpy(page.get() + PAGE_SIZE - 1 * SHORT_SIZE, &freeSpace, SHORT_SIZE);
 
+        // Flush updated page
         fileHandle.writePage(rid.pageNum, page.get());
-
         return 0;
     }
 
