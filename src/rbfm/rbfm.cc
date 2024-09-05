@@ -158,11 +158,6 @@ namespace PeterDB {
             rid_t.pageNum = offset - TOMBSTONE_MARKER;
             rid_t.slotNum = length - TOMBSTONE_MARKER;
             readRecord(fileHandle, recordDescriptor, rid_t, data);
-            // const unsigned pageNum = offset - TOMBSTONE_MARKER;
-            // const unsigned slotNum = length - TOMBSTONE_MARKER;
-            // fileHandle.readPage(pageNum, page.get());
-            // memcpy(&offset, page.get() + (PAGE_SIZE - 2 * SHORT_SIZE - slotNum * SLOT_SIZE), SHORT_SIZE);
-            // memcpy(&length, page.get() + (PAGE_SIZE - 2 * SHORT_SIZE - slotNum * SLOT_SIZE + SHORT_SIZE), SHORT_SIZE);
             return 0;
         }
 
