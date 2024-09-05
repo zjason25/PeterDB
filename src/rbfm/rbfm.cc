@@ -2,7 +2,6 @@
 
 #include <cstdio>
 #include <cstring>
-#include <iostream>
 #include <sstream>
 #include <algorithm>
 #include <iterator>
@@ -155,8 +154,6 @@ namespace PeterDB {
             fileHandle.readPage(pageNum, page.get());
             memcpy(&offset, page.get() + (PAGE_SIZE - 2 * SHORT_SIZE - slotNum * SLOT_SIZE), SHORT_SIZE);
             memcpy(&length, page.get() + (PAGE_SIZE - 2 * SHORT_SIZE - slotNum * SLOT_SIZE + SHORT_SIZE), SHORT_SIZE);
-            memcpy(data, page.get() + offset, length);
-            return 0;
         }
 
         // If a record was deleted, slot will have 0
