@@ -142,15 +142,15 @@ namespace PeterDB {
         const std::unique_ptr<char[]> page(new char[PAGE_SIZE]);
         fileHandle.readPage(rid.pageNum, page.get());
 
-        // Locate record
+        // Get record offset and length
         unsigned short offset, length;
-        memcpy(&offset, page.get() + (PAGE_SIZE - SLOT_SIZE - rid.slotNum * SLOT_SIZE), SHORT_SIZE);
         memcpy(&length, page.get() + (PAGE_SIZE - SLOT_SIZE - rid.slotNum * SLOT_SIZE + SHORT_SIZE), SHORT_SIZE);
 
         // Reading a non-existent record returns error
         if (length == 0) {
             return -1;
         }
+        memcpy(&offset, page.get() + (PAGE_SIZE - SLOT_SIZE - rid.slotNum * SLOT_SIZE), SHORT_SIZE);
 
         // Read from a tombstone
         if (length >= TOMBSTONE_MARKER) {
@@ -220,17 +220,19 @@ namespace PeterDB {
 
     RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                             const RID &rid) {
-        // Read page and get record offset and length
+        // Read page
         const std::unique_ptr<char[]> page(new char[PAGE_SIZE]);
         fileHandle.readPage(rid.pageNum, page.get());
+
+        // Get record offset and length
         unsigned short offset, length;
-        memcpy(&offset, page.get() + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE), SHORT_SIZE);
         memcpy(&length, page.get() + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE + SHORT_SIZE), SHORT_SIZE);
 
         // Deleting a non-existent record returns error
         if (length == 0) {
             return -1;
         }
+        memcpy(&offset, page.get() + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE), SHORT_SIZE);
 
         // Deleting a tombstone record
         if (length >= TOMBSTONE_MARKER) {
@@ -280,76 +282,83 @@ namespace PeterDB {
 
     RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                             const void *data, const RID &rid) {
-        char* page = new char[PAGE_SIZE];
-        fileHandle.readPage(rid.pageNum, page);
+        // Read page
+        const std::unique_ptr<char[]> page(new char[PAGE_SIZE]);
+        fileHandle.readPage(rid.pageNum, page.get());
+
+        // Get record offset and length
         unsigned short offset, length;
-        memcpy(&length, page + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE + SHORT_SIZE), SHORT_SIZE);
-        // updating a non-existent record returns error
+        memcpy(&length, page.get() + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE + SHORT_SIZE), SHORT_SIZE);
+
+        // Updating a non-existent record returns error
         if (length == 0) {
             return -1;
         }
-        memcpy(&offset, page + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE), SHORT_SIZE);
+        memcpy(&offset, page.get() + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE), SHORT_SIZE);
 
-        // prepare new record to insert
+        // Prepare new record to insert
         std::vector<bool> isNull = extractNullInformation(data, recordDescriptor);
-        unsigned recordSize = getRecordSize(data, recordDescriptor, isNull);
+        const unsigned recordSize = getRecordSize(data, recordDescriptor, isNull);
 
-        // find old record
+        // Find old record
         unsigned short numberOfSlots, freeSpace;
-        memcpy(&numberOfSlots, page + PAGE_SIZE - 2 * SHORT_SIZE, SHORT_SIZE);
-        memcpy(&freeSpace, page + PAGE_SIZE - 1 * SHORT_SIZE, SHORT_SIZE);
+        memcpy(&numberOfSlots, page.get() + PAGE_SIZE - 2 * SHORT_SIZE, SHORT_SIZE);
+        memcpy(&freeSpace, page.get() + PAGE_SIZE - 1 * SHORT_SIZE, SHORT_SIZE);
 
-        // delete record
-        unsigned directoryEnd = PAGE_SIZE - 2 * SHORT_SIZE - numberOfSlots * 2 * SHORT_SIZE;
+        // Update the old record
+        const unsigned directoryEnd = PAGE_SIZE - 2 * SHORT_SIZE - numberOfSlots * 2 * SHORT_SIZE;
 
-        // if recordSize <= length, replace record then compact space,
+        // Write new record over the old record
         if (recordSize <= length) {
-            memcpy(page + offset, data, recordSize);
-            memmove(page + offset + recordSize, page + offset + length, directoryEnd - (offset + recordSize));
-            // adjust directory
-            unsigned updatedRecordOffset = offset;
-            unsigned lengthDiff = length - recordSize; // how much the new record and old record differ by length
-            char* dirPtr = page + directoryEnd;
-            for (int i = 0; i < numberOfSlots; i++) {
-                unsigned slotOffset;
-                memcpy(&slotOffset, dirPtr + i * (SHORT_SIZE * 2), SHORT_SIZE);
-                if (slotOffset > updatedRecordOffset) {
-                    slotOffset -= lengthDiff;
-                    memcpy(dirPtr + i * (SHORT_SIZE * 2), &slotOffset, SHORT_SIZE);
+            memcpy(page.get() + offset, data, recordSize);
+            // If new record is smaller than old record, compact space
+            if (recordSize < length) {
+                const unsigned shiftSize = directoryEnd - (offset + recordSize);
+                memmove(page.get() + offset + recordSize, page.get() + offset + length, shiftSize);
+                // Update directory entries
+                const unsigned updatedRecordOffset = offset;
+                const unsigned lengthDiff = length - recordSize;
+                char* dirPtr = page.get() + directoryEnd;
+                for (int i = 0; i < numberOfSlots; i++) {
+                    unsigned slotOffset;
+                    memcpy(&slotOffset, dirPtr + i * (SHORT_SIZE * 2), SHORT_SIZE);
+                    if (slotOffset > updatedRecordOffset) {
+                        slotOffset -= lengthDiff;
+                        memcpy(dirPtr + i * (SHORT_SIZE * 2), &slotOffset, SHORT_SIZE);
+                    }
                 }
             }
             // offset stays the same
         }
-        // if old record is larger than new record, delete it
+        // If old record is larger than new record, delete it
         else {
             deleteRecord(fileHandle, recordDescriptor, rid);
-            memcpy(&freeSpace, page + PAGE_SIZE - 1 * SHORT_SIZE, SHORT_SIZE);
-            // insert at the end of current page
+            memcpy(&freeSpace, page.get() + PAGE_SIZE - 1 * SHORT_SIZE, SHORT_SIZE);
+            // If there is enough space, insert at the end of current page
             if (freeSpace >= recordSize) {
-                unsigned endOfRecords = directoryEnd - freeSpace;
-                memcpy(page + endOfRecords, data, recordSize);
+                const unsigned endOfRecords = directoryEnd - freeSpace;
+                memcpy(page.get() + endOfRecords, data, recordSize);
                 freeSpace -= recordSize;
                 offset = endOfRecords;
             }
             else {
-                // insert in new page and leave tombstone: [pageNum_t][slotNum_t]
+                // Insert in new page and leave tombstone: [pageNum_t][slotNum_t]
                 RID rid_t;
                 insertRecord(fileHandle, recordDescriptor, data, rid_t);
-                unsigned pageNum_t = rid_t.pageNum + TOMBSTONE_MARKER; // length stores pageNum
-                unsigned slotNum_t = rid_t.slotNum + TOMBSTONE_MARKER; // offset stores slotNum
-                memcpy(page + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE), &pageNum_t, SHORT_SIZE);
-                memcpy(page + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE + SHORT_SIZE), &slotNum_t, SHORT_SIZE);
-                fileHandle.writePage(rid.pageNum, page);
+                const unsigned pageNum_t = rid_t.pageNum + TOMBSTONE_MARKER; // length stores pageNum
+                const unsigned slotNum_t = rid_t.slotNum + TOMBSTONE_MARKER; // offset stores slotNum
+                memcpy(page.get() + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE), &pageNum_t, SHORT_SIZE);
+                memcpy(page.get() + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE + SHORT_SIZE), &slotNum_t, SHORT_SIZE);
+                fileHandle.writePage(rid.pageNum, page.get());
                 return 0;
             }
         }
 
         length = recordSize;
-        memcpy(page + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE), &offset, SHORT_SIZE);
-        memcpy(page + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE + SHORT_SIZE), &length, SHORT_SIZE);
+        memcpy(page.get() + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE), &offset, SHORT_SIZE);
+        memcpy(page.get() + (PAGE_SIZE - 2 * SHORT_SIZE - rid.slotNum * 2 * SHORT_SIZE + SHORT_SIZE), &length, SHORT_SIZE);
 
-        fileHandle.writePage(rid.pageNum, page);
-
+        fileHandle.writePage(rid.pageNum, page.get());
         return 0;
     }
 
